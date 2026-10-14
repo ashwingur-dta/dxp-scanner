@@ -1,0 +1,12 @@
+{
+  "name": "@dxp/checks",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@dxp/schema": "*"
+  }
+}
