@@ -3,10 +3,20 @@ import { chromium } from 'playwright';
 export interface PdfOptions {
   html: string;
   footerTitle?: string;
+  executablePath?: string;
+  extraLaunchArgs?: string[];
 }
 
-export async function renderPdf({ html, footerTitle = 'Digital Experience Policy assessment' }: PdfOptions): Promise<Buffer> {
-  const browser = await chromium.launch({ args: ['--disable-dev-shm-usage', '--no-sandbox', '--disable-gpu'] });
+export async function renderPdf({
+  html,
+  footerTitle = 'Digital Experience Policy assessment',
+  executablePath,
+  extraLaunchArgs = [],
+}: PdfOptions): Promise<Buffer> {
+  const browser = await chromium.launch({
+    args: ['--disable-dev-shm-usage', '--no-sandbox', '--disable-gpu', ...extraLaunchArgs],
+    ...(executablePath ? { executablePath } : {}),
+  });
   try {
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'load' });

@@ -49,6 +49,8 @@ export interface ScanOptions {
   vantageRegion?: string;
   minRequestIntervalMs?: number;
   navigationTimeoutMs?: number;
+  executablePath?: string;
+  extraLaunchArgs?: string[];
   onProgress?: (p: ScanProgress) => void;
 }
 
@@ -295,7 +297,8 @@ export async function scan(job: ScanJob, opts: ScanOptions = {}): Promise<Eviden
   progress({ phase: 'discovering', done: 0, total: 1 });
 
   const browser = await chromium.launch({
-    args: ['--disable-dev-shm-usage', '--no-sandbox', '--disable-gpu'],
+    args: ['--disable-dev-shm-usage', '--no-sandbox', '--disable-gpu', ...(opts.extraLaunchArgs ?? [])],
+    ...(opts.executablePath ? { executablePath: opts.executablePath } : {}),
   });
 
   const context: BrowserContext = await browser.newContext({
@@ -328,8 +331,13 @@ export async function scan(job: ScanJob, opts: ScanOptions = {}): Promise<Eviden
     page.on('dialog', (d) => void d.dismiss().catch(() => undefined));
     page.setDefaultNavigationTimeout(navTimeout);
 
+    const rootUrl = new URL('/', origin).href;
     const visitQueue: string[] = [entry.href];
     const seen = new Set<string>([entry.href]);
+    if (rootUrl !== entry.href && robots.isAllowed('/')) {
+      visitQueue.push(rootUrl);
+      seen.add(rootUrl);
+    }
     let discoveredFromEntry = false;
 
     while (visitQueue.length > 0 && pages.length < maxPages) {

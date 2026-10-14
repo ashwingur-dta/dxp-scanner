@@ -9,7 +9,7 @@ import {
   RELAY_SERVICE,
   TIS_NATIONAL,
   coverageOf,
-  entryPage,
+  homePage,
   pageText,
   scoreablePages,
 } from '../util.js';
@@ -141,8 +141,12 @@ export const assistedPathwayChecks: CheckDef[] = [
     weight: 2,
     modes: ['quick', 'full'],
     run: (bundle) => {
-      const entry = entryPage(bundle);
-      if (!entry) return notCollected('The entry point could not be retrieved.');
+      const entry = homePage(bundle);
+      if (!entry) {
+        return notCollected(
+          'The site home page was not among the assessed pages, and the policy requires in-language options specifically on the front page.',
+        );
+      }
 
       const hasOffer =
         LANGUAGE_OFFER.test(pageText(entry)) ||

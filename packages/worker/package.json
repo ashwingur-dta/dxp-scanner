@@ -1,0 +1,17 @@
+{
+  "name": "@dxp/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@dxp/schema": "*",
+    "@dxp/scanner": "*",
+    "@dxp/checks": "*",
+    "@dxp/report": "*",
+    "@dxp/api": "*",
+    "@sparticuz/chromium": "*"
+  }
+}

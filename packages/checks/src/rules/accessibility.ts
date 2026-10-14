@@ -132,7 +132,6 @@ export const accessibilityChecks: CheckDef[] = [
           }
           prev = h.level;
         }
-        if (p.dom.headings.some((h) => h.faux)) reasons.push('text styled as headings but not marked up');
         if (reasons.length) bad.push(`${p.final_url} — ${reasons.join(', ')}`);
       }
 
@@ -140,7 +139,7 @@ export const accessibilityChecks: CheckDef[] = [
       return scoreRatio(
         ratio,
         def,
-        `${pages.length - bad.length} of ${pages.length} pages have a sound heading structure.`,
+        `${pages.length - bad.length} of ${pages.length} pages have a sound heading structure (one h1, no skipped levels).`,
         bad,
         coverageOf(bundle),
       );

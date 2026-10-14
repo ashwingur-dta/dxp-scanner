@@ -17,6 +17,16 @@ export function entryPage(bundle: EvidenceBundle): PageEvidence | undefined {
   );
 }
 
+export function homePage(bundle: EvidenceBundle): PageEvidence | undefined {
+  return scoreablePages(bundle).find((p) => {
+    try {
+      return new URL(p.final_url).pathname.replace(/\/$/, '') === '';
+    } catch {
+      return false;
+    }
+  });
+}
+
 export function pageText(page: PageEvidence): string {
   return `${page.dom.title}\n${page.main_text}\n${page.dom.links.map((l) => l.text).join('\n')}`;
 }

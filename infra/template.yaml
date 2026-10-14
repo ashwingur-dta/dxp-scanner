@@ -1,0 +1,409 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  DXP Scanner. Assesses Australian government websites against the Digital Experience
+  Policy. Serverless: CloudFront fronts a static SPA, an API Lambda and generated reports;
+  a container Lambda runs the Playwright crawl off an SQS queue.
+
+Parameters:
+  ApiCodeBucket:
+    Type: String
+    Description: S3 bucket holding the Lambda deployment zips
+  ApiCodeKey:
+    Type: String
+    Description: S3 key of the API Lambda zip
+  WorkerCodeKey:
+    Type: String
+    Description: S3 key of the worker Lambda zip
+  MaxPages:
+    Type: Number
+    Default: 10
+    Description: Page budget for a quick scan
+  RateLimit:
+    Type: Number
+    Default: 10
+    Description: Scans permitted per IP per rate window
+  RateWindowSeconds:
+    Type: Number
+    Default: 600
+  WafRateLimit:
+    Type: Number
+    Default: 300
+    Description: Requests per IP per 5 minutes at the CloudFront edge
+
+Resources:
+
+  SiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'dxp-site-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  ReportBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'dxp-reports-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-reports
+            Status: Enabled
+            ExpirationInDays: 90
+
+  EvidenceBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'dxp-evidence-${AWS::AccountId}'
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: cheaper-storage-for-old-evidence
+            Status: Enabled
+            Transitions:
+              - StorageClass: STANDARD_IA
+                TransitionInDays: 90
+          - Id: abort-incomplete-uploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+
+  JobsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'dxp-jobs-${AWS::StackName}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: job_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: job_id
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
+
+  RateTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'dxp-rate-${AWS::StackName}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: rate_key
+          AttributeType: S
+      KeySchema:
+        - AttributeName: rate_key
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
+
+  ScanDlq:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'dxp-scan-dlq-${AWS::StackName}'
+      MessageRetentionPeriod: 1209600
+
+  ScanQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'dxp-scan-${AWS::StackName}'
+      VisibilityTimeout: 960
+      MessageRetentionPeriod: 3600
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt ScanDlq.Arn
+        maxReceiveCount: 3
+
+  ApiRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: api
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                Resource:
+                  - !GetAtt JobsTable.Arn
+                  - !GetAtt RateTable.Arn
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt ScanQueue.Arn
+
+  WorkerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: worker
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                Resource: !GetAtt JobsTable.Arn
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt ScanQueue.Arn
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource:
+                  - !Sub '${ReportBucket.Arn}/*'
+                  - !Sub '${EvidenceBucket.Arn}/*'
+
+  ApiFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'dxp-api-${AWS::StackName}'
+      Runtime: nodejs22.x
+      Handler: index.handler
+      Role: !GetAtt ApiRole.Arn
+      MemorySize: 512
+      Timeout: 20
+      Architectures: [x86_64]
+      Code:
+        S3Bucket: !Ref ApiCodeBucket
+        S3Key: !Ref ApiCodeKey
+      Environment:
+        Variables:
+          JOBS_TABLE: !Ref JobsTable
+          RATE_TABLE: !Ref RateTable
+          QUEUE_URL: !Ref ScanQueue
+          RATE_LIMIT: !Ref RateLimit
+          RATE_WINDOW_SECONDS: !Ref RateWindowSeconds
+          NODE_OPTIONS: --enable-source-maps
+
+  ApiUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt ApiFunction.Arn
+      AuthType: NONE
+
+  ApiUrlPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt ApiFunction.Arn
+      Action: lambda:InvokeFunctionUrl
+      Principal: '*'
+      FunctionUrlAuthType: NONE
+
+  WorkerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'dxp-worker-${AWS::StackName}'
+      Runtime: nodejs22.x
+      Handler: index.handler
+      Role: !GetAtt WorkerRole.Arn
+      MemorySize: 3008
+      Timeout: 900
+      EphemeralStorage:
+        Size: 2048
+      Architectures: [x86_64]
+      ReservedConcurrentExecutions: 10
+      Code:
+        S3Bucket: !Ref ApiCodeBucket
+        S3Key: !Ref WorkerCodeKey
+      Environment:
+        Variables:
+          JOBS_TABLE: !Ref JobsTable
+          REPORT_BUCKET: !Ref ReportBucket
+          EVIDENCE_BUCKET: !Ref EvidenceBucket
+          MAX_PAGES: !Ref MaxPages
+          HOME: /tmp
+
+  WorkerEventSource:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt ScanQueue.Arn
+      FunctionName: !GetAtt WorkerFunction.Arn
+      BatchSize: 1
+      FunctionResponseTypes: [ReportBatchItemFailures]
+
+  SiteOac:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub 'dxp-oac-${AWS::StackName}'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  EdgeRateLimit:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: !Sub 'dxp-edge-${AWS::StackName}'
+      Scope: CLOUDFRONT
+      DefaultAction:
+        Allow: {}
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: !Sub 'dxp-edge-${AWS::StackName}'
+      Rules:
+        - Name: per-ip-rate-limit
+          Priority: 0
+          Action:
+            Block: {}
+          Statement:
+            RateBasedStatement:
+              Limit: !Ref WafRateLimit
+              AggregateKeyType: IP
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: per-ip-rate-limit
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub 'DXP Scanner ${AWS::StackName}'
+        DefaultRootObject: index.html
+        HttpVersion: http2and3
+        PriceClass: PriceClass_All
+        WebACLId: !GetAtt EdgeRateLimit.Arn
+        Origins:
+          - Id: site
+            DomainName: !GetAtt SiteBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt SiteOac.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+          - Id: reports
+            DomainName: !GetAtt ReportBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt SiteOac.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+          - Id: api
+            DomainName: !Select [2, !Split ['/', !GetAtt ApiUrl.FunctionUrl]]
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols: [TLSv1.2]
+        DefaultCacheBehavior:
+          TargetOriginId: site
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          Compress: true
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+        CacheBehaviors:
+          - PathPattern: /api/*
+            TargetOriginId: api
+            ViewerProtocolPolicy: https-only
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
+            Compress: true
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+          - PathPattern: /reports/*
+            TargetOriginId: reports
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD, OPTIONS]
+            Compress: true
+            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 10
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 10
+
+  SiteBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref SiteBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub '${SiteBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}'
+
+  ReportBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ReportBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub '${ReportBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}'
+
+Outputs:
+  SiteUrl:
+    Description: The public URL
+    Value: !Sub 'https://${Distribution.DomainName}'
+  ApiFunctionUrl:
+    Description: Direct Lambda function URL (bypasses CloudFront and the edge rate limit)
+    Value: !GetAtt ApiUrl.FunctionUrl
+  SiteBucketName:
+    Value: !Ref SiteBucket
+  ReportBucketName:
+    Value: !Ref ReportBucket
+  EvidenceBucketName:
+    Value: !Ref EvidenceBucket
+  DistributionId:
+    Value: !Ref Distribution
