@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./url-guard": "./src/url-guard.ts"
   },
   "dependencies": {
     "@dxp/schema": "*"

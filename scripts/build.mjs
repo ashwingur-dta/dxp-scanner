@@ -1,4 +1,5 @@
-import { cp, mkdir, rm, stat } from 'node:fs/promises';
+import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { build } from 'esbuild';
 
@@ -40,14 +41,30 @@ await build({
   alias: { playwright: 'playwright-core' },
 });
 
-for (const dep of WORKER_RUNTIME_DEPS) {
-  await cp(`node_modules/${dep}`, `dist/worker/node_modules/${dep}`, {
-    recursive: true,
-    dereference: true,
-  });
-}
+const pkgVersion = (name) =>
+  JSON.parse(readFileSync(`node_modules/${name}/package.json`, 'utf8')).version;
+
+await writeFile(
+  'dist/worker/package.json',
+  JSON.stringify(
+    {
+      name: 'dxp-worker-runtime',
+      version: '0.1.0',
+      private: true,
+      dependencies: Object.fromEntries(WORKER_RUNTIME_DEPS.map((d) => [d, pkgVersion(d)])),
+    },
+    null,
+    2,
+  ),
+);
+
+execFileSync('npm', ['install', '--omit=dev', '--no-audit', '--no-fund', '--silent'], {
+  cwd: 'dist/worker',
+  stdio: 'inherit',
+});
 
 await rm('dist/worker/node_modules/playwright-core/.local-browsers', { recursive: true, force: true });
+await rm('dist/worker/package-lock.json', { force: true });
 
 const zip = (dir, out) => {
   execFileSync('python3', ['-I', 'scripts/zip.py', dir, out], { stdio: 'inherit' });

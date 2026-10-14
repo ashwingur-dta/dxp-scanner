@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { UrlRejected, guardUrl } from '@dxp/scanner';
+import { UrlRejected, guardUrl } from '@dxp/scanner/url-guard';
 import { RUBRIC_VERSION, exportRubric } from '@dxp/checks';
 import { consumeRateToken, enqueue, getJob, putJob, type Job } from './store.js';
 

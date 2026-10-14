@@ -20,14 +20,17 @@ Parameters:
     Description: Page budget for a quick scan
   RateLimit:
     Type: Number
-    Default: 10
-    Description: Scans permitted per IP per rate window
+    Default: 200
+    Description: >
+      Scans permitted per IP per rate window. Set high for the MVP so it cannot
+      interfere with demonstration; it exists only as an abuse guardrail on a
+      public endpoint.
   RateWindowSeconds:
     Type: Number
     Default: 600
   WafRateLimit:
     Type: Number
-    Default: 300
+    Default: 2000
     Description: Requests per IP per 5 minutes at the CloudFront edge
 
 Resources:
@@ -224,19 +227,52 @@ Resources:
           RATE_WINDOW_SECONDS: !Ref RateWindowSeconds
           NODE_OPTIONS: --enable-source-maps
 
-  ApiUrl:
-    Type: AWS::Lambda::Url
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
     Properties:
-      TargetFunctionArn: !GetAtt ApiFunction.Arn
-      AuthType: NONE
+      Name: !Sub 'dxp-api-${AWS::StackName}'
+      ProtocolType: HTTP
 
-  ApiUrlPermission:
+  HttpApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ApiFunction.Arn
+      PayloadFormatVersion: '2.0'
+      TimeoutInMillis: 20000
+
+  HttpApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: 'ANY /{proxy+}'
+      Target: !Sub 'integrations/${HttpApiIntegration}'
+
+  HttpApiRootRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: 'ANY /'
+      Target: !Sub 'integrations/${HttpApiIntegration}'
+
+  HttpApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: $default
+      AutoDeploy: true
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 20
+        ThrottlingRateLimit: 10
+
+  ApiInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !GetAtt ApiFunction.Arn
-      Action: lambda:InvokeFunctionUrl
-      Principal: '*'
-      FunctionUrlAuthType: NONE
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*'
 
   WorkerFunction:
     Type: AWS::Lambda::Function
@@ -326,7 +362,7 @@ Resources:
             S3OriginConfig:
               OriginAccessIdentity: ''
           - Id: api
-            DomainName: !Select [2, !Split ['/', !GetAtt ApiUrl.FunctionUrl]]
+            DomainName: !Sub '${HttpApi}.execute-api.${AWS::Region}.amazonaws.com'
             CustomOriginConfig:
               OriginProtocolPolicy: https-only
               OriginSSLProtocols: [TLSv1.2]
@@ -350,15 +386,6 @@ Resources:
             AllowedMethods: [GET, HEAD, OPTIONS]
             Compress: true
             CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
-        CustomErrorResponses:
-          - ErrorCode: 403
-            ResponseCode: 200
-            ResponsePagePath: /index.html
-            ErrorCachingMinTTL: 10
-          - ErrorCode: 404
-            ResponseCode: 200
-            ResponsePagePath: /index.html
-            ErrorCachingMinTTL: 10
 
   SiteBucketPolicy:
     Type: AWS::S3::BucketPolicy
@@ -396,9 +423,11 @@ Outputs:
   SiteUrl:
     Description: The public URL
     Value: !Sub 'https://${Distribution.DomainName}'
-  ApiFunctionUrl:
-    Description: Direct Lambda function URL (bypasses CloudFront and the edge rate limit)
-    Value: !GetAtt ApiUrl.FunctionUrl
+  ApiEndpoint:
+    Description: >
+      API Gateway endpoint. Reachable directly, so the per-IP limit in DynamoDB and the
+      API Gateway stage throttle both apply independently of the CloudFront WAF rule.
+    Value: !GetAtt HttpApi.ApiEndpoint
   SiteBucketName:
     Value: !Ref SiteBucket
   ReportBucketName:

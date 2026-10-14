@@ -1,6 +1,5 @@
 import { gzipSync } from 'node:zlib';
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import serverlessChromium from '@sparticuz/chromium';
 import { rollup, runChecks } from '@dxp/checks';
 import { renderPdf, renderReport } from '@dxp/report';
 import { UrlRejected, scan } from '@dxp/scanner';
@@ -14,17 +13,32 @@ const REPORT_BUCKET = process.env.REPORT_BUCKET ?? '';
 const MAX_PAGES = Number(process.env.MAX_PAGES ?? 10);
 const IN_LAMBDA = !!process.env.AWS_LAMBDA_FUNCTION_NAME;
 
-let cachedExecutablePath: string | undefined;
+interface ServerlessChromium {
+  args: string[];
+  executablePath: (location?: string) => Promise<string>;
+}
+
+const dynamicImport = new Function('s', 'return import(s)') as (s: string) => Promise<unknown>;
+
+let cachedLaunch: { executablePath?: string; extraLaunchArgs: string[] } | undefined;
 
 async function browserLaunch(): Promise<{ executablePath?: string; extraLaunchArgs: string[] }> {
   if (!IN_LAMBDA) return { extraLaunchArgs: [] };
-  cachedExecutablePath ??= await serverlessChromium.executablePath();
-  return {
-    ...(cachedExecutablePath ? { executablePath: cachedExecutablePath } : {}),
-    extraLaunchArgs: serverlessChromium.args.filter(
-      (a) => !a.startsWith('--single-process') && !a.startsWith('--headless'),
-    ),
+  if (cachedLaunch) return cachedLaunch;
+
+  const mod = (await dynamicImport('@sparticuz/chromium')) as
+    | ServerlessChromium
+    | { default: ServerlessChromium };
+  const chromium = 'default' in mod ? mod.default : mod;
+
+  const executablePath = await chromium.executablePath();
+  cachedLaunch = {
+    ...(executablePath ? { executablePath } : {}),
+    extraLaunchArgs: [
+      ...chromium.args.filter((a) => !a.startsWith('--headless')),
+    ],
   };
+  return cachedLaunch;
 }
 
 interface SqsEvent {
@@ -64,6 +78,7 @@ async function runJob(jobId: string, url: string): Promise<void> {
     {
       ...launch,
       vantageRegion: region,
+      navigationTimeoutMs: 60_000,
       onProgress: (p) => {
         if (p.phase === 'crawling' && p.done % 2 === 0) {
           void patchJob(jobId, { phase: p.phase, pages_done: p.done, pages_total: p.total }).catch(
@@ -75,6 +90,23 @@ async function runJob(jobId: string, url: string): Promise<void> {
   );
 
   await patchJob(jobId, { phase: 'scoring', bundle_id: bundle.bundle_id });
+
+  const usable = bundle.pages.filter((p) => p.integrity.ok);
+  if (usable.length === 0) {
+    const raw = bundle.skipped[0]?.reason ?? 'no pages could be retrieved';
+    const why = (raw.split('\n')[0] ?? raw).slice(0, 160);
+    const blocked = /ERR_HTTP2|timeout|ERR_|403|challenge/i.test(why);
+    await patchJob(jobId, {
+      status: 'failed',
+      phase: 'blocked',
+      site_id: bundle.site.site_id,
+      pages_done: 0,
+      error: blocked
+        ? `This site could not be read by the scanner, so it has not been scored. The pages were refused or did not load (${why}). Many government sites sit behind bot protection that blocks automated browsers. Scoring on site-level checks alone would be misleading, so no score is reported.`
+        : `No pages could be assessed (${why}), so no score is reported.`,
+    });
+    return;
+  }
 
   const findings = runChecks(bundle);
   const scorecard = rollup(bundle, findings);

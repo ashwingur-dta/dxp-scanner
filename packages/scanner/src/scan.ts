@@ -272,7 +272,7 @@ async function checkLinks(
 export async function scan(job: ScanJob, opts: ScanOptions = {}): Promise<EvidenceBundle> {
   const mode: ScanMode = job.mode ?? 'quick';
   const maxPages = job.maxPages ?? (mode === 'quick' ? 10 : 100);
-  const navTimeout = opts.navigationTimeoutMs ?? 30_000;
+  const navTimeout = opts.navigationTimeoutMs ?? 45_000;
   const vantageRegion = opts.vantageRegion ?? process.env.AWS_REGION ?? 'local';
   const progress = opts.onProgress ?? (() => undefined);
 
@@ -319,12 +319,11 @@ export async function scan(job: ScanJob, opts: ScanOptions = {}): Promise<Eviden
     });
 
     await context.route('**/*', async (route) => {
-      const req = route.request();
-      if (req.method() !== 'GET') {
+      if (route.request().method() !== 'GET') {
         await route.abort();
         return;
       }
-      await route.continue();
+      await route.fallback();
     });
 
     const page = await context.newPage();
@@ -366,7 +365,12 @@ export async function scan(job: ScanJob, opts: ScanOptions = {}): Promise<Eviden
 
       let response: Response | null = null;
       try {
-        response = await page.goto(url, { waitUntil: 'domcontentloaded' });
+        try {
+          response = await page.goto(url, { waitUntil: 'domcontentloaded' });
+        } catch {
+          response = await page.goto(url, { waitUntil: 'commit', timeout: navTimeout });
+          await page.waitForLoadState('domcontentloaded', { timeout: 15_000 }).catch(() => undefined);
+        }
         await page.waitForTimeout(600);
       } catch (err) {
         page.off('request', onRequest);
