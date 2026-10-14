@@ -19,7 +19,8 @@
     "postinstall": "playwright install chromium",
     "build": "node scripts/build.mjs",
     "build:web": "npm run build --workspace @dxp/web",
-    "rubric": "tsx packages/cli/src/index.ts --rubric"
+    "rubric": "tsx packages/cli/src/index.ts --rubric",
+    "test:ui": "node test/ui-smoke.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
