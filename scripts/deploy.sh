@@ -42,7 +42,12 @@ aws cloudformation deploy \
   --parameter-overrides \
     "ApiCodeBucket=${DEPLOY_BUCKET}" \
     "ApiCodeKey=${API_KEY}" \
-    "WorkerCodeKey=${WORKER_KEY}"
+    "WorkerCodeKey=${WORKER_KEY}" \
+    "MaxPages=${MAX_PAGES:-6}" \
+    "RateLimit=${RATE_LIMIT:-0}" \
+    "RateWindowSeconds=${RATE_WINDOW_SECONDS:-600}" \
+    "DedupeSeconds=${DEDUPE_SECONDS:-60}" \
+    "WafRateLimit=${WAF_RATE_LIMIT:-2000}"
 
 get_output() {
   aws cloudformation describe-stacks --stack-name "$STACK" --region "$REGION" \

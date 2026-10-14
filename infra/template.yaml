@@ -16,18 +16,27 @@ Parameters:
     Description: S3 key of the worker Lambda zip
   MaxPages:
     Type: Number
-    Default: 10
-    Description: Page budget for a quick scan
+    Default: 6
+    Description: >
+      Page budget for a quick scan. Kept small so a demonstration returns in well
+      under a minute; the batch assessment path uses a much larger budget.
   RateLimit:
     Type: Number
-    Default: 200
+    Default: 0
     Description: >
-      Scans permitted per IP per rate window. Set high for the MVP so it cannot
-      interfere with demonstration; it exists only as an abuse guardrail on a
-      public endpoint.
+      Scans permitted per IP per rate window. 0 disables rate limiting entirely,
+      which is the MVP default. Raise it above 0 before exposing this widely.
   RateWindowSeconds:
     Type: Number
     Default: 600
+
+  DedupeSeconds:
+    Type: Number
+    Default: 60
+    Description: >
+      A repeat scan of the same URL inside this window returns the existing report
+      instead of re-crawling. Keeps the public box from being used to generate
+      repeated traffic at a government site, while staying short enough to demo.
   WafRateLimit:
     Type: Number
     Default: 2000
@@ -225,6 +234,7 @@ Resources:
           QUEUE_URL: !Ref ScanQueue
           RATE_LIMIT: !Ref RateLimit
           RATE_WINDOW_SECONDS: !Ref RateWindowSeconds
+          DEDUPE_SECONDS: !Ref DedupeSeconds
           NODE_OPTIONS: --enable-source-maps
 
   HttpApi:

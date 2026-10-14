@@ -23,6 +23,34 @@ const RATE_WINDOW_SECONDS = Number(process.env.RATE_WINDOW_SECONDS ?? 600);
 const DEDUPE_SECONDS = Number(process.env.DEDUPE_SECONDS ?? 900);
 const JOB_TTL_SECONDS = Number(process.env.JOB_TTL_SECONDS ?? 60 * 60 * 24 * 14);
 
+const USER_AGENT =
+  'Mozilla/5.0 (compatible; DXP-Compliance-Scanner/0.1; +https://github.com/ashwingur-dta/dxp-scanner)';
+
+type Reachability =
+  | { reachable: true }
+  | { reachable: false; kind: 'refused' | 'blocked' | 'error'; detail: string };
+
+async function probeReachable(url: URL): Promise<Reachability> {
+  try {
+    const res = await fetch(url.href, {
+      method: 'GET',
+      headers: { 'user-agent': USER_AGENT, accept: 'text/html' },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(9000),
+    });
+    if (res.status === 403 || res.status === 401 || res.status === 429) {
+      return { reachable: false, kind: 'blocked', detail: `HTTP ${res.status}` };
+    }
+    if (res.status >= 500) {
+      return { reachable: false, kind: 'error', detail: `HTTP ${res.status}` };
+    }
+    return { reachable: true };
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    return { reachable: false, kind: 'refused', detail };
+  }
+}
+
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
   'cache-control': 'no-store',
@@ -85,17 +113,19 @@ async function handleCreate(event: LambdaEvent): Promise<LambdaResult> {
     return json(400, { error: 'url_too_long', message: 'That URL is too long.' });
   }
 
-  const ip = clientIp(event);
-  const allowed = await consumeRateToken(ip, RATE_LIMIT, RATE_WINDOW_SECONDS);
-  if (!allowed) {
-    return json(
-      429,
-      {
-        error: 'rate_limited',
-        message: `Too many scans from this address. The limit is ${RATE_LIMIT} every ${Math.round(RATE_WINDOW_SECONDS / 60)} minutes, so that this tool cannot be used to generate traffic against government services.`,
-      },
-      { 'retry-after': String(RATE_WINDOW_SECONDS) },
-    );
+  if (RATE_LIMIT > 0) {
+    const ip = clientIp(event);
+    const allowed = await consumeRateToken(ip, RATE_LIMIT, RATE_WINDOW_SECONDS);
+    if (!allowed) {
+      return json(
+        429,
+        {
+          error: 'rate_limited',
+          message: `Too many scans from this address. The limit is ${RATE_LIMIT} every ${Math.round(RATE_WINDOW_SECONDS / 60)} minutes.`,
+        },
+        { 'retry-after': String(RATE_WINDOW_SECONDS) },
+      );
+    }
   }
 
   let url: URL;
@@ -106,6 +136,20 @@ async function handleCreate(event: LambdaEvent): Promise<LambdaResult> {
       return json(400, { error: err.reason, message: err.message });
     }
     return json(400, { error: 'invalid_url', message: 'That URL could not be validated.' });
+  }
+
+  const reach = await probeReachable(url);
+  if (!reach.reachable) {
+    return json(422, {
+      error: 'unreachable',
+      message:
+        `${url.hostname} did not accept a request from this scanner, so it cannot be assessed (${reach.detail}). ` +
+        'A large share of gov.au sites sit behind a content delivery network with bot management that refuses ' +
+        'automated clients. The scanner identifies itself honestly and respects robots.txt rather than disguising ' +
+        'itself, so assessing such a site requires the agency to allow this scanner through. Running the ' +
+        'open-source command line tool from your own network is the other option.',
+      host: url.hostname,
+    });
   }
 
   const jobId = dedupeKey(url.href);
@@ -158,6 +202,19 @@ export async function handler(event: LambdaEvent): Promise<LambdaResult> {
     const statusMatch = path.match(/^\/(?:api\/)?scan\/([^/]+)$/);
     if (method === 'GET' && statusMatch?.[1]) {
       return await handleStatus(statusMatch[1]);
+    }
+
+    if (method === 'GET' && (path === '/api/reachable' || path === '/reachable')) {
+      const target = event.queryStringParameters?.url;
+      if (!target) return json(400, { error: 'missing_url', message: 'Provide ?url=' });
+      try {
+        const u = await guardUrl(target, { requireGovAu: true, resolveDns: true });
+        const r = await probeReachable(u);
+        return json(200, { host: u.hostname, ...r });
+      } catch (err) {
+        if (err instanceof UrlRejected) return json(400, { error: err.reason, message: err.message });
+        return json(400, { error: 'invalid_url', message: 'Could not validate that URL.' });
+      }
     }
 
     if (method === 'GET' && (path === '/api/rubric' || path === '/rubric')) {

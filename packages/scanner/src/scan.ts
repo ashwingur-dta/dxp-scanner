@@ -15,10 +15,9 @@ import { collectFacts } from './facts.js';
 import { fetchCrux } from './crux.js';
 import { fetchRobots } from './robots.js';
 import { guardUrl, isSafeCrawlTarget, normaliseHost } from './url-guard.js';
+import { COLLECTOR_VERSION, EXTRACTOR_VERSION, SAMPLING_POLICY_VERSION } from './versions.js';
 
-export const COLLECTOR_VERSION = '0.1.0';
-export const SAMPLING_POLICY_VERSION = 'nav-sitemap-breadth-1';
-export const EXTRACTOR_VERSION = 'readability-lite-1';
+export { COLLECTOR_VERSION, EXTRACTOR_VERSION, SAMPLING_POLICY_VERSION };
 
 export const USER_AGENT =
   'Mozilla/5.0 (compatible; DXP-Compliance-Scanner/0.1; +https://github.com/ashwingur-dta/dxp-scanner)';
@@ -169,7 +168,7 @@ async function measureViewports(page: Page, widths: number[]): Promise<ViewportP
   for (const width of widths) {
     try {
       await page.setViewportSize({ width, height: 800 });
-      await page.waitForTimeout(220);
+      await page.waitForTimeout(150);
       const probe = await page.evaluate(() => ({
         scrollWidth: document.documentElement.scrollWidth,
         innerWidth: window.innerWidth,
@@ -222,8 +221,8 @@ async function checkSecurityTxt(origin: string): Promise<boolean> {
 
 async function checkLinks(
   urls: string[],
-  concurrency = 5,
-  timeoutMs = 6000,
+  concurrency = 8,
+  timeoutMs = 5000,
 ): Promise<{ checked: number; ok: number; broken: { url: string; status: number }[] }> {
   const broken: { url: string; status: number }[] = [];
   let ok = 0;
@@ -331,6 +330,12 @@ export async function scan(job: ScanJob, opts: ScanOptions = {}): Promise<Eviden
     page.setDefaultNavigationTimeout(navTimeout);
 
     const rootUrl = new URL('/', origin).href;
+    let lastRequestAt = 0;
+    const politeWait = async (): Promise<void> => {
+      const elapsed = Date.now() - lastRequestAt;
+      if (lastRequestAt > 0 && elapsed < minInterval) await sleep(minInterval - elapsed);
+    };
+
     const visitQueue: string[] = [entry.href];
     const seen = new Set<string>([entry.href]);
     if (rootUrl !== entry.href && robots.isAllowed('/')) {
@@ -363,6 +368,9 @@ export async function scan(job: ScanJob, opts: ScanOptions = {}): Promise<Eviden
       page.on('request', onRequest);
       page.on('console', onConsole);
 
+      await politeWait();
+      lastRequestAt = Date.now();
+
       let response: Response | null = null;
       try {
         try {
@@ -371,7 +379,7 @@ export async function scan(job: ScanJob, opts: ScanOptions = {}): Promise<Eviden
           response = await page.goto(url, { waitUntil: 'commit', timeout: navTimeout });
           await page.waitForLoadState('domcontentloaded', { timeout: 15_000 }).catch(() => undefined);
         }
-        await page.waitForTimeout(600);
+        await page.waitForTimeout(250);
       } catch (err) {
         page.off('request', onRequest);
         page.off('console', onConsole);
@@ -379,7 +387,6 @@ export async function scan(job: ScanJob, opts: ScanOptions = {}): Promise<Eviden
           url,
           reason: `navigation failed: ${err instanceof Error ? err.message : String(err)}`,
         });
-        await sleep(minInterval);
         continue;
       }
 
@@ -421,7 +428,6 @@ export async function scan(job: ScanJob, opts: ScanOptions = {}): Promise<Eviden
 
       if (!facts) {
         skipped.push({ url, reason: `page facts could not be collected: ${factsError ?? 'unknown error'}` });
-        await sleep(minInterval);
         continue;
       }
 
@@ -446,7 +452,7 @@ export async function scan(job: ScanJob, opts: ScanOptions = {}): Promise<Eviden
         : { violations: [], incompleteCount: 0, passCount: 0 };
 
       const isEntry = pages.length === 0;
-      const viewports = isEntry && integrity.ok ? await measureViewports(page, [320, 768]) : [];
+      const viewports = isEntry && integrity.ok ? await measureViewports(page, [320]) : [];
 
       pages.push({
         page_id: pageId(finalUrl),
@@ -500,7 +506,6 @@ export async function scan(job: ScanJob, opts: ScanOptions = {}): Promise<Eviden
         }
       }
 
-      await sleep(minInterval);
     }
 
     progress({ phase: 'site-checks', done: 0, total: 4 });
@@ -534,7 +539,7 @@ export async function scan(job: ScanJob, opts: ScanOptions = {}): Promise<Eviden
       ),
     ];
 
-    const sampleSize = mode === 'quick' ? 20 : 80;
+    const sampleSize = mode === 'quick' ? 12 : 80;
     const linkSample = linkPool.slice(0, sampleSize);
     const linkCheck = await checkLinks(linkSample);
 
@@ -582,7 +587,15 @@ export async function scan(job: ScanJob, opts: ScanOptions = {}): Promise<Eviden
       link_check: linkCheck,
     };
 
-    const body = { schema: 'dxp.evidence/1' as const, mode, version, site, pages, skipped };
+    const body = {
+      schema: 'dxp.evidence/1' as const,
+      mode,
+      page_budget: maxPages,
+      version,
+      site,
+      pages,
+      skipped,
+    };
 
     return {
       bundle_id: sha256(body),
