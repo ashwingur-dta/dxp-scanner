@@ -24,8 +24,7 @@ export async function fetchCrux(origin: string, apiKey = process.env.CRUX_API_KE
   if (!apiKey) {
     return {
       available: false,
-      reason:
-        'no CRUX_API_KEY configured. Field data is the only measurement of real-user performance this tool trusts, so performance is reported as not collected rather than substituted with a lab measurement taken outside Australia',
+      reason: 'no CrUX API key configured',
     };
   }
 
@@ -42,7 +41,7 @@ export async function fetchCrux(origin: string, apiKey = process.env.CRUX_API_KE
     if (res.status === 404) {
       return {
         available: false,
-        reason: 'the Chrome UX Report holds no data for this origin, which usually means insufficient traffic',
+        reason: 'the Chrome UX Report has no data for this origin (usually too little traffic)',
       };
     }
     if (!res.ok) {
@@ -55,7 +54,7 @@ export async function fetchCrux(origin: string, apiKey = process.env.CRUX_API_KE
     const cls = p75(m['cumulative_layout_shift']);
 
     if (lcp === undefined && inp === undefined && cls === undefined) {
-      return { available: false, reason: 'the Chrome UX Report returned no Core Web Vitals for this origin' };
+      return { available: false, reason: 'the Chrome UX Report returned no Core Web Vitals' };
     }
 
     return {

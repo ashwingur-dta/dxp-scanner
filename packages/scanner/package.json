@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./url-guard": "./src/url-guard.ts"
+    "./url-guard": "./src/url-guard.ts",
+    "./versions": "./src/versions.ts"
   },
   "dependencies": {
     "@dxp/schema": "*"

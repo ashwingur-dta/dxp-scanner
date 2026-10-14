@@ -1,0 +1,207 @@
+collection: Australian Government
+description: >
+  Prominent Commonwealth services and departmental sites. Chosen for prominence first and
+  probed for reachability second, so that the proportion marked excluded is an honest
+  measure of how much of government this tool can see rather than an artefact of picking
+  the sites that let us in. Reachability probed from the deployed scanner in us-east-1 via
+  GET /api/reachable on 2026-10-14.
+
+targets:
+  - site_id: abs
+    agency: Australian Bureau of Statistics
+    service: abs.gov.au
+    entry_url: https://www.abs.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: abf
+    agency: Australian Border Force
+    service: abf.gov.au
+    entry_url: https://www.abf.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: aec
+    agency: Australian Electoral Commission
+    service: aec.gov.au
+    entry_url: https://www.aec.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: asic
+    agency: Australian Securities and Investments Commission
+    service: asic.gov.au
+    entry_url: https://asic.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: austrade
+    agency: Australian Trade and Investment Commission
+    service: austrade.gov.au
+    entry_url: https://www.austrade.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: business-gov-au
+    agency: Department of Industry, Science and Resources
+    service: business.gov.au
+    entry_url: https://business.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: data-gov-au
+    agency: Digital Transformation Agency
+    service: data.gov.au
+    entry_url: https://data.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: homeaffairs
+    agency: Department of Home Affairs
+    service: homeaffairs.gov.au
+    entry_url: https://www.homeaffairs.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: ipaustralia
+    agency: IP Australia
+    service: ipaustralia.gov.au
+    entry_url: https://www.ipaustralia.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: legislation
+    agency: Office of Parliamentary Counsel
+    service: Federal Register of Legislation
+    entry_url: https://www.legislation.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: mygov
+    agency: Services Australia
+    service: myGov
+    entry_url: https://my.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: oaic
+    agency: Office of the Australian Information Commissioner
+    service: oaic.gov.au
+    entry_url: https://www.oaic.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: treasury
+    agency: Department of the Treasury
+    service: treasury.gov.au
+    entry_url: https://treasury.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: servicesaustralia
+    agency: Services Australia
+    service: servicesaustralia.gov.au
+    entry_url: https://www.servicesaustralia.gov.au/
+    status: excluded
+    reason: >
+      Accepts the connection and then drops the request without responding, so no page can
+      be read. Characteristic of a content delivery network with bot management. The site
+      works normally for people in Australia; this records only what the scanner in
+      us-east-1 can reach.
+    checked_at: 2026-10-14
+
+  - site_id: ato
+    agency: Australian Taxation Office
+    service: ato.gov.au
+    entry_url: https://www.ato.gov.au/
+    status: excluded
+    reason: >
+      Returns HTTP 403 to the scanner. Accepted the scanner earlier in October 2026, which
+      is a reminder that bot management decisions change without notice and an exclusion
+      here is a snapshot rather than a verdict.
+    checked_at: 2026-10-14
+
+  - site_id: health
+    agency: Department of Health, Disability and Ageing
+    service: health.gov.au
+    entry_url: https://www.health.gov.au/
+    status: excluded
+    reason: >
+      Connection accepted, request dropped without a response. No page can be read, so no
+      score is produced.
+    checked_at: 2026-10-14
+
+  - site_id: digital
+    agency: Digital Transformation Agency
+    service: digital.gov.au
+    entry_url: https://www.digital.gov.au/
+    status: excluded
+    reason: >
+      Connection accepted, request dropped without a response. This is the site that
+      publishes the Digital Experience Policy itself, and it cannot be assessed against it
+      from outside.
+    checked_at: 2026-10-14
+
+  - site_id: dta
+    agency: Digital Transformation Agency
+    service: dta.gov.au
+    entry_url: https://www.dta.gov.au/
+    status: excluded
+    reason: Connection accepted, request dropped without a response.
+    checked_at: 2026-10-14
+
+  - site_id: education
+    agency: Department of Education
+    service: education.gov.au
+    entry_url: https://www.education.gov.au/
+    status: excluded
+    reason: Connection accepted, request dropped without a response.
+    checked_at: 2026-10-14
+
+  - site_id: dfat
+    agency: Department of Foreign Affairs and Trade
+    service: dfat.gov.au
+    entry_url: https://www.dfat.gov.au/
+    status: excluded
+    reason: Connection accepted, request dropped without a response.
+    checked_at: 2026-10-14
+
+  - site_id: ndis
+    agency: National Disability Insurance Agency
+    service: ndis.gov.au
+    entry_url: https://www.ndis.gov.au/
+    status: excluded
+    reason: Returns HTTP 403 to the scanner.
+    checked_at: 2026-10-14
+
+  - site_id: bom
+    agency: Bureau of Meteorology
+    service: bom.gov.au
+    entry_url: https://www.bom.gov.au/
+    status: excluded
+    reason: Returns HTTP 403 to the scanner.
+    checked_at: 2026-10-14
+
+  - site_id: aph
+    agency: Department of Parliamentary Services
+    service: aph.gov.au
+    entry_url: https://www.aph.gov.au/
+    status: excluded
+    reason: Returns HTTP 403 to the scanner.
+    checked_at: 2026-10-14
+
+  - site_id: accc
+    agency: Australian Competition and Consumer Commission
+    service: accc.gov.au
+    entry_url: https://www.accc.gov.au/
+    status: excluded
+    reason: Returns HTTP 403 to the scanner.
+    checked_at: 2026-10-14
+
+  - site_id: humanrights
+    agency: Australian Human Rights Commission
+    service: humanrights.gov.au
+    entry_url: https://humanrights.gov.au/
+    status: excluded
+    reason: Returns HTTP 403 to the scanner.
+    checked_at: 2026-10-14

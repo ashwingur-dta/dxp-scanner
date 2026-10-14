@@ -218,6 +218,8 @@ export interface EvidenceBundle {
   bundle_id: string;
   schema: 'dxp.evidence/1';
   mode: ScanMode;
+
+  page_budget: number;
   version: EvidenceBundleVersion;
   collected_at: string;
   site: SiteEvidence;

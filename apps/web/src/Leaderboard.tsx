@@ -1,0 +1,195 @@
+import { useEffect, useState } from 'react';
+import { getLeaderboard, type Leaderboard as Board } from './api';
+
+const COVERAGE_DOC =
+  'https://github.com/ashwingur-dta/dxp-scanner/blob/main/docs/coverage.md';
+
+function Ranked({ board }: { board: Board }) {
+  return (
+    <table className="leaderboard">
+      <caption>
+        Ranked assessments. {board.counts.ranked} of {board.counts.registry_total} targets in the
+        registry. Built {new Date(board.generated_at).toLocaleDateString('en-AU')}.
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Rank</th>
+          <th scope="col">Service</th>
+          <th scope="col">Agency</th>
+          <th scope="col">Score</th>
+          <th scope="col">Pages read</th>
+          <th scope="col">Needs human review</th>
+          <th scope="col">Not assessable externally</th>
+          <th scope="col">Report</th>
+        </tr>
+      </thead>
+      <tbody>
+        {board.entries.map((e) => (
+          <tr key={e.site_id}>
+            <th scope="row">
+              {e.rank}
+              {e.band_size > 1 ? <span className="equal"> equal, {e.band_size} sites</span> : null}
+            </th>
+            <td>{e.service}</td>
+            <td>{e.agency}</td>
+            <td>
+              {e.score_percent}% of {e.assessed} assessable sub-requirements
+            </td>
+            <td>
+              {e.pages_assessed} of {e.pages_attempted}
+            </td>
+            <td>{e.needs_review}</td>
+            <td>{e.not_assessable}</td>
+            <td>
+              {e.report_url ? (
+                <a href={e.report_url} aria-label={`Report for ${e.service}`}>
+                  Report
+                </a>
+              ) : (
+                'none'
+              )}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function Unranked({ board }: { board: Board }) {
+  return (
+    <table className="unranked">
+      <caption>
+        Not ranked: {board.counts.dropped} of {board.counts.registry_total} targets, of which{' '}
+        {board.counts.registry_excluded} could not be scanned at all.
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Service</th>
+          <th scope="col">Agency</th>
+          <th scope="col">Why not ranked</th>
+        </tr>
+      </thead>
+      <tbody>
+        {board.dropped.map((d) => (
+          <tr key={d.site_id}>
+            <th scope="row">{d.service}</th>
+            <td>{d.agency}</td>
+            <td>{d.reason}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+export default function Leaderboard() {
+  const [board, setBoard] = useState<Board | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    getLeaderboard()
+      .then((b) => live && setBoard(b))
+      .catch((err: unknown) =>
+        live && setError(err instanceof Error ? err.message : 'Could not load the leaderboard.'),
+      );
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  return (
+    <>
+      <a className="skip" href="#main">
+        Skip to main content
+      </a>
+
+      <header className="site-header">
+        <div className="wrap">
+          <p className="eyebrow">Independent · experimental</p>
+          <h1>Ranked leaderboard</h1>
+          <p className="tagline">
+            <a href="/">Assess a single site</a>
+          </p>
+        </div>
+      </header>
+
+      <main id="main" className="wrap">
+        <div className="disclaimer">
+          <p>
+            <strong>This is not an official assessment.</strong> Not affiliated with or endorsed by
+            the Digital Transformation Agency, and not a determination of compliance.
+          </p>
+          {board && (
+            <p>
+              {board.threshold_provenance.tool} of the{' '}
+              {board.threshold_provenance.policy + board.threshold_provenance.tool} thresholds
+              behind these scores were set by this tool, not the policy.
+            </p>
+          )}
+        </div>
+
+        {error && (
+          <p className="field-error" role="alert">
+            {error}
+          </p>
+        )}
+
+        {!board && !error && (
+          <p className="hint" role="status">
+            Loading the leaderboard…
+          </p>
+        )}
+
+        {board && (
+          <>
+            <ul className="method">
+              <li>
+                Ranks only {board.comparability.mode} assessments under rubric{' '}
+                {board.comparability.rubric_version}, sampling policy{' '}
+                {board.comparability.sampling_policy_version}, a{' '}
+                {board.comparability.page_budget}-page budget and at least{' '}
+                {board.comparability.min_pages_assessed} pages read. Anything else is listed below
+                with its reason.
+              </li>
+              <li>
+                Sites within {board.band_points} percentage points share a rank. The measurement is
+                not precise enough for a strict order.
+              </li>
+              <li>
+                {board.counts.registry_excluded} of {board.counts.registry_total} targets could not
+                be scanned at all. A leaderboard drawn only from sites that permit scanning is in
+                effect a ranking of agencies that do not use aggressive bot management.{' '}
+                <a href={COVERAGE_DOC}>Which sites refuse, and why</a>.
+              </li>
+            </ul>
+
+            {board.entries.length > 0 ? (
+              <Ranked board={board} />
+            ) : (
+              <p className="hint">No assessment is currently comparable, so nothing is ranked.</p>
+            )}
+
+            {board.dropped.length > 0 && <Unranked board={board} />}
+          </>
+        )}
+      </main>
+
+      <footer className="site-footer">
+        <div className="wrap">
+          <p>
+            Registry, source and methodology:{' '}
+            <a href="https://github.com/ashwingur-dta/dxp-scanner">
+              github.com/ashwingur-dta/dxp-scanner
+            </a>
+          </p>
+          <p>
+            Operating a site assessed here and want a correction or an exclusion? Open an issue on
+            the repository.
+          </p>
+        </div>
+      </footer>
+    </>
+  );
+}

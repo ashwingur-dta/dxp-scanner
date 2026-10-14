@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RequestFailed, getScan, looksLikeGovAu, startScan, type Job } from './api';
+import Leaderboard from './Leaderboard';
+
+export const LEADERBOARD_PATH = '/leaderboard';
 
 const PHASE_LABEL: Record<string, string> = {
   queued: 'Waiting for a scanner',
@@ -113,9 +116,17 @@ function Failure({ job }: { job: Job }) {
 }
 
 export default function App() {
+  if (window.location.pathname.replace(/\/+$/, '') === LEADERBOARD_PATH) {
+    return <Leaderboard />;
+  }
+  return <Home />;
+}
+
+function Home() {
   const [url, setUrl] = useState('');
   const [job, setJob] = useState<Job | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [unreachable, setUnreachable] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const pollRef = useRef<number | null>(null);
   const liveRegion = useRef<HTMLDivElement | null>(null);
@@ -148,6 +159,7 @@ export default function App() {
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setUnreachable(false);
     setJob(null);
 
     const trimmed = url.trim();
@@ -168,8 +180,12 @@ export default function App() {
       setJob(created);
       if (created.status === 'queued' || created.status === 'running') poll(created.job_id);
     } catch (err) {
-      if (err instanceof RequestFailed) setError(err.message);
-      else setError('Could not reach the scanner. Please try again.');
+      if (err instanceof RequestFailed) {
+        setError(err.message);
+        setUnreachable(err.code === 'unreachable');
+      } else {
+        setError('Could not reach the scanner. Please try again.');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -193,6 +209,9 @@ export default function App() {
               Digital Experience Policy
             </a>{' '}
             — 4 standards, 25 criteria.
+          </p>
+          <p className="tagline">
+            <a href={LEADERBOARD_PATH}>Ranked leaderboard</a>
           </p>
         </div>
       </header>
@@ -238,6 +257,18 @@ export default function App() {
               {error}
             </p>
           )}
+          {unreachable && (
+            <p className="hint">
+              Around half of major gov.au sites refuse automated clients. Verified to work:{' '}
+              <code>www.abs.gov.au</code>, <code>www.ato.gov.au</code>, <code>my.gov.au</code>,{' '}
+              <code>business.gov.au</code>, <code>www.homeaffairs.gov.au</code>,{' '}
+              <code>data.gov.au</code>.{' '}
+              <a href="https://github.com/ashwingur-dta/dxp-scanner/blob/main/docs/coverage.md">
+                Which sites refuse, and why
+              </a>
+              .
+            </p>
+          )}
         </form>
 
         <div ref={liveRegion}>
@@ -266,6 +297,9 @@ export default function App() {
                 machine-detectable violations, not conformance. Six of the 25 criteria are internal
                 governance processes and are reported as not assessable rather than scored. The
                 scanner never submits a form, so anything behind a transaction is out of reach.
+                Around half of major gov.au sites sit behind bot management and refuse
+                automated clients altogether; those report as unassessable rather than being
+                scored, and we do not attempt to evade that.
               </p>
             </div>
           </div>

@@ -1,0 +1,17 @@
+{
+  "name": "@dxp/batch",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./dispatch": "./src/dispatch.ts",
+    "./aggregate": "./src/aggregate.ts"
+  },
+  "dependencies": {
+    "@dxp/schema": "*",
+    "@dxp/checks": "*",
+    "@dxp/scanner": "*",
+    "@dxp/api": "*"
+  }
+}

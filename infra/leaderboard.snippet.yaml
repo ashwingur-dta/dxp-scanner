@@ -1,0 +1,252 @@
+# Leaderboard infrastructure, to be merged into infra/template.yaml.
+#
+# This is a snippet, not a deployable template: it references SiteBucket, ReportBucket,
+# EvidenceBucket, JobsTable, ScanQueue and ApiCodeBucket, which all live in template.yaml.
+# It is kept separate only because template.yaml is being edited concurrently.
+#
+# To merge:
+#   1. add everything under `Parameters:` below to template.yaml `Parameters:`
+#   2. add everything under `Resources:` below to template.yaml `Resources:`
+#   3. add everything under `Outputs:` below to template.yaml `Outputs:`
+#   4. no change is needed to the CloudFront distribution. The aggregate Lambda writes
+#      s3://dxp-reports-<account>/reports/leaderboard.json, which the existing
+#      `/reports/*` cache behaviour already serves, and the SPA uses hash routing, so
+#      /#/leaderboard needs no new origin or route.
+#   5. extend scripts/deploy.sh:
+#
+#        DISPATCH_KEY="lambda/dispatch-${STAMP}.zip"
+#        AGGREGATE_KEY="lambda/aggregate-${STAMP}.zip"
+#        aws s3 cp dist/dispatch.zip  "s3://${DEPLOY_BUCKET}/${DISPATCH_KEY}"  --only-show-errors
+#        aws s3 cp dist/aggregate.zip "s3://${DEPLOY_BUCKET}/${AGGREGATE_KEY}" --only-show-errors
+#
+#      and add to the existing --parameter-overrides list:
+#
+#        "DispatchCodeKey=${DISPATCH_KEY}" \
+#        "AggregateCodeKey=${AGGREGATE_KEY}"
+#
+# New IAM permissions required, and why each is needed:
+#
+#   DispatchRole
+#     dynamodb:PutItem   on JobsTable      create the job row each batch scan reports into
+#     sqs:SendMessage    on ScanQueue      enqueue one scan per active target
+#     logs:*             via AWSLambdaBasicExecutionRole
+#
+#   AggregateRole
+#     s3:ListBucket      on EvidenceBucket  find the newest scorecard per site, restricted
+#                                           by prefix condition to scorecards/*
+#     s3:GetObject       on EvidenceBucket/scorecards/*  read those scorecards
+#     s3:PutObject       on ReportBucket/reports/leaderboard.json  publish the leaderboard
+#     logs:*             via AWSLambdaBasicExecutionRole
+#
+#   Neither role may write to the evidence bucket. Evidence is sealed and content-addressed,
+#   and only the worker produces it.
+#
+#   EventBridge needs lambda:InvokeFunction on both functions, granted by the two
+#   AWS::Lambda::Permission resources below.
+#
+# Operational notes:
+#
+#   LeaderboardPageBudget is the whole comparability contract. Every ranked entry must have
+#   been collected with this exact budget under the same sampling policy and rubric, so
+#   changing it invalidates the existing leaderboard: the aggregate Lambda will drop every
+#   stored scorecard as non-comparable until a fresh batch run completes. Change it
+#   deliberately, and expect an empty leaderboard in between.
+#
+#   The dispatch schedule runs 6 hours before the aggregate schedule because a worker scan
+#   of 60 pages at one request per second takes several minutes and the queue is limited to
+#   10 concurrent workers. Aggregating too early simply produces a shorter leaderboard with
+#   recorded "no assessment yet" reasons rather than a wrong one.
+
+Parameters:
+
+  DispatchCodeKey:
+    Type: String
+    Description: S3 key of the batch-dispatch Lambda zip
+
+  AggregateCodeKey:
+    Type: String
+    Description: S3 key of the aggregate Lambda zip
+
+  LeaderboardPageBudget:
+    Type: Number
+    Default: 60
+    Description: >
+      Pages per full assessment for the leaderboard. Entries collected under any other
+      budget are dropped as non-comparable, because coverage checks such as feedback
+      presence on every page mean different things at different sample sizes. 60 pages at
+      one request per second fits inside the worker's 900 second timeout with room for
+      axe-core and PDF rendering.
+
+  LeaderboardMinPages:
+    Type: Number
+    Default: 25
+    Description: >
+      Minimum pages that must survive collection integrity for a site to be ranked. A site
+      that only yielded a handful of readable pages is reported as unranked with a reason
+      rather than compared against sites where the full sample was read.
+
+  DispatchSchedule:
+    Type: String
+    Default: cron(0 16 ? * SUN *)
+    Description: When to enqueue a batch run, in UTC
+
+  AggregateSchedule:
+    Type: String
+    Default: cron(0 22 ? * SUN *)
+    Description: >
+      When to rebuild leaderboard.json, in UTC. Must be late enough after DispatchSchedule
+      for the queue to drain.
+
+Resources:
+
+  DispatchRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: batch-dispatch
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: dynamodb:PutItem
+                Resource: !GetAtt JobsTable.Arn
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt ScanQueue.Arn
+
+  AggregateRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: aggregate
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt EvidenceBucket.Arn
+                Condition:
+                  StringLike:
+                    s3:prefix: 'scorecards/*'
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub '${EvidenceBucket.Arn}/scorecards/*'
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub '${ReportBucket.Arn}/reports/leaderboard.json'
+
+  DispatchFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'dxp-batch-dispatch-${AWS::StackName}'
+      Runtime: nodejs22.x
+      Handler: index.handler
+      Role: !GetAtt DispatchRole.Arn
+      MemorySize: 256
+      Timeout: 120
+      Architectures: [x86_64]
+      Code:
+        S3Bucket: !Ref ApiCodeBucket
+        S3Key: !Ref DispatchCodeKey
+      Environment:
+        Variables:
+          JOBS_TABLE: !Ref JobsTable
+          QUEUE_URL: !Ref ScanQueue
+          LEADERBOARD_PAGE_BUDGET: !Ref LeaderboardPageBudget
+          NODE_OPTIONS: --enable-source-maps
+
+  AggregateFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'dxp-aggregate-${AWS::StackName}'
+      Runtime: nodejs22.x
+      Handler: index.handler
+      Role: !GetAtt AggregateRole.Arn
+      MemorySize: 512
+      Timeout: 300
+      Architectures: [x86_64]
+      Code:
+        S3Bucket: !Ref ApiCodeBucket
+        S3Key: !Ref AggregateCodeKey
+      Environment:
+        Variables:
+          EVIDENCE_BUCKET: !Ref EvidenceBucket
+          REPORT_BUCKET: !Ref ReportBucket
+          LEADERBOARD_KEY: reports/leaderboard.json
+          LEADERBOARD_PAGE_BUDGET: !Ref LeaderboardPageBudget
+          LEADERBOARD_MIN_PAGES: !Ref LeaderboardMinPages
+          NODE_OPTIONS: --enable-source-maps
+
+  DispatchScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub 'dxp-batch-dispatch-${AWS::StackName}'
+      Description: Enqueue a full assessment for every active target in the registry
+      ScheduleExpression: !Ref DispatchSchedule
+      State: ENABLED
+      Targets:
+        - Id: dispatch
+          Arn: !GetAtt DispatchFunction.Arn
+
+  AggregateScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub 'dxp-aggregate-${AWS::StackName}'
+      Description: Rebuild leaderboard.json from the per-site scorecards in the evidence bucket
+      ScheduleExpression: !Ref AggregateSchedule
+      State: ENABLED
+      Targets:
+        - Id: aggregate
+          Arn: !GetAtt AggregateFunction.Arn
+
+  DispatchInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt DispatchFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt DispatchScheduleRule.Arn
+
+  AggregateInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt AggregateFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt AggregateScheduleRule.Arn
+
+Outputs:
+
+  LeaderboardUrl:
+    Description: The ranked leaderboard page
+    Value: !Sub 'https://${Distribution.DomainName}/#/leaderboard'
+
+  LeaderboardDataUrl:
+    Description: The static JSON the leaderboard page fetches
+    Value: !Sub 'https://${Distribution.DomainName}/reports/leaderboard.json'
+
+  DispatchFunctionName:
+    Description: Invoke manually to start a batch run without waiting for the schedule
+    Value: !Ref DispatchFunction
+
+  AggregateFunctionName:
+    Description: Invoke manually to rebuild the leaderboard immediately
+    Value: !Ref AggregateFunction

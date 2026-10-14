@@ -316,6 +316,27 @@ Resources:
       BatchSize: 1
       FunctionResponseTypes: [ReportBatchItemFailures]
 
+  SpaRouter:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub 'dxp-spa-router-${AWS::StackName}'
+      AutoPublish: true
+      FunctionConfig:
+        Comment: Serve index.html for extensionless SPA routes so /leaderboard works
+        Runtime: cloudfront-js-2.0
+      FunctionCode: |
+        function handler(event) {
+          var request = event.request;
+          var uri = request.uri;
+          if (uri.startsWith('/api/') || uri.startsWith('/reports/')) {
+            return request;
+          }
+          if (uri.lastIndexOf('.') <= uri.lastIndexOf('/')) {
+            request.uri = '/index.html';
+          }
+          return request;
+        }
+
   SiteOac:
     Type: AWS::CloudFront::OriginAccessControl
     Properties:
@@ -382,6 +403,9 @@ Resources:
           AllowedMethods: [GET, HEAD, OPTIONS]
           Compress: true
           CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt SpaRouter.FunctionARN
         CacheBehaviors:
           - PathPattern: /api/*
             TargetOriginId: api

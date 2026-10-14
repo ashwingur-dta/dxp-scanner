@@ -122,6 +122,8 @@ export interface Scorecard {
   entry_url: string;
   mode: ScanMode;
   rubric_version: string;
+  sampling_policy_version: string;
+  page_budget: number;
   generated_at: string;
   vantage_region: string;
   standards: StandardScore[];
@@ -135,6 +137,8 @@ export interface Scorecard {
     needsReview: number;
 
     evidenceCoverage: number;
+    pagesAssessed: number;
+    pagesAttempted: number;
   };
 
   thresholdProvenance: { policy: number; tool: number };
@@ -210,6 +214,7 @@ export function rollup(bundle: EvidenceBundle, findings: Finding[]): Scorecard {
     .map((f) => f.def.threshold)
     .filter((t): t is NonNullable<typeof t> => !!t);
 
+  const usablePages = bundle.pages.filter((p) => p.integrity.ok).length;
   const attemptedPages = bundle.pages.length + bundle.skipped.length;
 
   return {
@@ -218,6 +223,8 @@ export function rollup(bundle: EvidenceBundle, findings: Finding[]): Scorecard {
     entry_url: bundle.site.entry_url,
     mode: bundle.mode,
     rubric_version: RUBRIC_VERSION,
+    sampling_policy_version: bundle.version.sampling_policy_version,
+    page_budget: bundle.page_budget,
     generated_at: new Date().toISOString(),
     vantage_region: bundle.version.vantage_region,
     standards,
@@ -227,8 +234,9 @@ export function rollup(bundle: EvidenceBundle, findings: Finding[]): Scorecard {
       attempted: all.filter((f) => f.state !== 'not_assessable').length,
       notAssessable: all.filter((f) => f.state === 'not_assessable').length,
       needsReview: all.filter((f) => f.state === 'needs_review').length,
-      evidenceCoverage:
-        attemptedPages > 0 ? bundle.pages.filter((p) => p.integrity.ok).length / attemptedPages : 0,
+      evidenceCoverage: attemptedPages > 0 ? usablePages / attemptedPages : 0,
+      pagesAssessed: usablePages,
+      pagesAttempted: attemptedPages,
     },
     thresholdProvenance: {
       policy: usedThresholds.filter((t) => t.source === 'policy').length,

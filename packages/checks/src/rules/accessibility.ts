@@ -47,7 +47,7 @@ export const accessibilityChecks: CheckDef[] = [
       const totalNodes = [...byRule.values()].reduce((s, e) => s + e.nodes, 0);
       if (byRule.size === 0) {
         return pass(
-          `No critical or serious machine-detectable violations across ${pages.length} pages. This is not a claim of WCAG conformance.`,
+          `No critical or serious machine-detectable violations across ${pages.length} pages.`,
           0,
           coverageOf(bundle),
         );
@@ -223,7 +223,7 @@ export const accessibilityChecks: CheckDef[] = [
       return scoreRatio(
         ratio,
         def,
-        `${meaningful.length - bad.length} of ${meaningful.length} non-decorative images have usable alternative text. Presence only — accuracy is not machine-checkable.`,
+        `${meaningful.length - bad.length} of ${meaningful.length} non-decorative images have usable alternative text.`,
         [...new Set(bad.map((i) => `${i.src.slice(0, 80)} on ${i.page}`))].slice(0, 20),
         coverageOf(bundle),
       );

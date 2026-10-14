@@ -4,6 +4,8 @@ import { rollup, runChecks } from '@dxp/checks';
 import { renderPdf, renderReport } from '@dxp/report';
 import { UrlRejected, scan } from '@dxp/scanner';
 import { patchJob } from '@dxp/api';
+import type { ScanRequest } from '@dxp/api/store';
+import type { ScanMode } from '@dxp/schema';
 
 const region = process.env.AWS_REGION ?? 'us-east-1';
 const s3 = new S3Client({ region });
@@ -11,6 +13,7 @@ const s3 = new S3Client({ region });
 const EVIDENCE_BUCKET = process.env.EVIDENCE_BUCKET ?? '';
 const REPORT_BUCKET = process.env.REPORT_BUCKET ?? '';
 const MAX_PAGES = Number(process.env.MAX_PAGES ?? 10);
+const FULL_MAX_PAGES = Number(process.env.FULL_MAX_PAGES ?? 60);
 const IN_LAMBDA = !!process.env.AWS_LAMBDA_FUNCTION_NAME;
 
 interface ServerlessChromium {
@@ -68,13 +71,33 @@ async function put(
   );
 }
 
-async function runJob(jobId: string, url: string): Promise<void> {
-  await patchJob(jobId, { status: 'running', phase: 'validating' });
+type Sampling = Pick<ScanRequest, 'siteId' | 'mode' | 'maxPages'>;
+
+function resolveSampling(request: Sampling): { mode: ScanMode; maxPages: number } {
+  const mode: ScanMode = request.mode === 'full' ? 'full' : 'quick';
+  const budget = request.maxPages ?? (mode === 'full' ? FULL_MAX_PAGES : MAX_PAGES);
+  return { mode, maxPages: Math.max(1, Math.min(budget, FULL_MAX_PAGES)) };
+}
+
+async function runJob(jobId: string, url: string, request: Sampling = {}): Promise<void> {
+  const { mode, maxPages } = resolveSampling(request);
+  await patchJob(jobId, {
+    status: 'running',
+    phase: 'validating',
+    pages_total: maxPages,
+    ...(request.siteId ? { site_id: request.siteId } : {}),
+  });
 
   const launch = await browserLaunch();
 
   const bundle = await scan(
-    { url, mode: 'quick', maxPages: MAX_PAGES, requireGovAu: true },
+    {
+      url,
+      mode,
+      maxPages,
+      requireGovAu: true,
+      ...(request.siteId ? { siteId: request.siteId } : {}),
+    },
     {
       ...launch,
       vantageRegion: region,
@@ -102,7 +125,7 @@ async function runJob(jobId: string, url: string): Promise<void> {
       site_id: bundle.site.site_id,
       pages_done: 0,
       error: blocked
-        ? `This site could not be read by the scanner, so it has not been scored. The pages were refused or did not load (${why}). Many government sites sit behind bot protection that blocks automated browsers. Scoring on site-level checks alone would be misleading, so no score is reported.`
+        ? `${bundle.site.origin} refused the scanner's requests, so it has not been scored (${why}). This is typically a content delivery network with bot management rejecting automated clients. The scanner identifies itself and respects robots.txt rather than disguising itself, so assessing this site requires the agency to allow it through. Scoring on site-level checks alone would be misleading, so no score is reported.`
         : `No pages could be assessed (${why}), so no score is reported.`,
     });
     return;
@@ -159,10 +182,14 @@ export async function handler(event: SqsEvent): Promise<SqsBatchResponse> {
   for (const record of event.Records) {
     let jobId = '';
     try {
-      const msg = JSON.parse(record.body) as { jobId?: string; url?: string };
+      const msg = JSON.parse(record.body) as Partial<ScanRequest>;
       if (!msg.jobId || !msg.url) throw new Error('message missing jobId or url');
       jobId = msg.jobId;
-      await runJob(msg.jobId, msg.url);
+      await runJob(msg.jobId, msg.url, {
+        ...(msg.siteId ? { siteId: msg.siteId } : {}),
+        ...(msg.mode ? { mode: msg.mode } : {}),
+        ...(msg.maxPages ? { maxPages: msg.maxPages } : {}),
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error('worker failed', { jobId, message });

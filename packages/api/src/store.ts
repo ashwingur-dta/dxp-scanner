@@ -73,10 +73,23 @@ export async function patchJob(jobId: string, patch: Partial<Job>): Promise<void
   );
 }
 
-export async function enqueue(jobId: string, url: string): Promise<void> {
+export interface ScanRequest {
+  jobId: string;
+  url: string;
+  siteId?: string;
+  mode?: 'quick' | 'full';
+  maxPages?: number;
+}
+
+export async function enqueue(
+  jobId: string,
+  url: string,
+  sampling: Omit<ScanRequest, 'jobId' | 'url'> = {},
+): Promise<void> {
   if (!QUEUE_URL) throw new Error('QUEUE_URL is not configured');
+  const request: ScanRequest = { jobId, url, ...sampling };
   await sqs.send(
-    new SendMessageCommand({ QueueUrl: QUEUE_URL, MessageBody: JSON.stringify({ jobId, url }) }),
+    new SendMessageCommand({ QueueUrl: QUEUE_URL, MessageBody: JSON.stringify(request) }),
   );
 }
 
