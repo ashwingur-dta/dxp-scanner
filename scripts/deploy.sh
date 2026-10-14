@@ -47,13 +47,14 @@ aws cloudformation deploy \
     "ApiCodeBucket=${DEPLOY_BUCKET}" \
     "ApiCodeKey=${API_KEY}" \
     "WorkerCodeKey=${WORKER_KEY}" \
-    "MaxPages=${MAX_PAGES:-6}" \
+    "MaxPages=${MAX_PAGES:-10}" \
     "RateLimit=${RATE_LIMIT:-0}" \
     "RateWindowSeconds=${RATE_WINDOW_SECONDS:-600}" \
     "DedupeSeconds=${DEDUPE_SECONDS:-60}" \
     "WafRateLimit=${WAF_RATE_LIMIT:-2000}" \
     "DispatchCodeKey=${DISPATCH_KEY}" \
-    "AggregateCodeKey=${AGGREGATE_KEY}"
+    "AggregateCodeKey=${AGGREGATE_KEY}" \
+    "LeaderboardPageBudget=${LEADERBOARD_PAGE_BUDGET:-150}"
 
 get_output() {
   aws cloudformation describe-stacks --stack-name "$STACK" --region "$REGION" \

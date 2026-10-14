@@ -16,7 +16,7 @@ Parameters:
     Description: S3 key of the worker Lambda zip
   MaxPages:
     Type: Number
-    Default: 6
+    Default: 10
     Description: >
       Page budget for a quick scan. Kept small so a demonstration returns in well
       under a minute; the batch assessment path uses a much larger budget.
@@ -53,7 +53,7 @@ Parameters:
 
   LeaderboardPageBudget:
     Type: Number
-    Default: 60
+    Default: 150
     Description: >
       Pages per full assessment for the leaderboard. Entries collected under any other
       budget are dropped as non-comparable, because coverage checks such as feedback
@@ -345,6 +345,7 @@ Resources:
           REPORT_BUCKET: !Ref ReportBucket
           EVIDENCE_BUCKET: !Ref EvidenceBucket
           MAX_PAGES: !Ref MaxPages
+          FULL_MAX_PAGES: !Ref LeaderboardPageBudget
           HOME: /tmp
 
   WorkerEventSource:

@@ -50,6 +50,7 @@ export interface ScanOptions {
   navigationTimeoutMs?: number;
   executablePath?: string;
   extraLaunchArgs?: string[];
+  maxDurationMs?: number;
   onProgress?: (p: ScanProgress) => void;
 }
 
@@ -274,6 +275,8 @@ export async function scan(job: ScanJob, opts: ScanOptions = {}): Promise<Eviden
   const navTimeout = opts.navigationTimeoutMs ?? 45_000;
   const vantageRegion = opts.vantageRegion ?? process.env.AWS_REGION ?? 'local';
   const progress = opts.onProgress ?? (() => undefined);
+  const startedAt = Date.now();
+  const crawlDeadline = opts.maxDurationMs ? startedAt + opts.maxDurationMs : Infinity;
 
   progress({ phase: 'validating', done: 0, total: 1, url: job.url });
   const entry = await guardUrl(job.url, { requireGovAu: job.requireGovAu ?? true });
@@ -345,6 +348,13 @@ export async function scan(job: ScanJob, opts: ScanOptions = {}): Promise<Eviden
     let discoveredFromEntry = false;
 
     while (visitQueue.length > 0 && pages.length < maxPages) {
+      if (Date.now() >= crawlDeadline) {
+        for (const pending of visitQueue.slice(0, 20)) {
+          skipped.push({ url: pending, reason: 'not crawled: time budget for this scan was reached' });
+        }
+        break;
+      }
+
       const url = visitQueue.shift();
       if (!url) break;
 

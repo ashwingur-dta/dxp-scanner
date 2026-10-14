@@ -15,6 +15,7 @@ const REPORT_BUCKET = process.env.REPORT_BUCKET ?? '';
 const MAX_PAGES = Number(process.env.MAX_PAGES ?? 10);
 const FULL_MAX_PAGES = Number(process.env.FULL_MAX_PAGES ?? 60);
 const IN_LAMBDA = !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+const RENDER_RESERVE_MS = Number(process.env.RENDER_RESERVE_MS ?? 150_000);
 
 interface ServerlessChromium {
   args: string[];
@@ -42,6 +43,10 @@ async function browserLaunch(): Promise<{ executablePath?: string; extraLaunchAr
     ],
   };
   return cachedLaunch;
+}
+
+interface LambdaContext {
+  getRemainingTimeInMillis: () => number;
 }
 
 interface SqsEvent {
@@ -79,7 +84,12 @@ function resolveSampling(request: Sampling): { mode: ScanMode; maxPages: number 
   return { mode, maxPages: Math.max(1, Math.min(budget, FULL_MAX_PAGES)) };
 }
 
-async function runJob(jobId: string, url: string, request: Sampling = {}): Promise<void> {
+async function runJob(
+  jobId: string,
+  url: string,
+  request: Sampling = {},
+  crawlBudgetMs?: number,
+): Promise<void> {
   const { mode, maxPages } = resolveSampling(request);
   await patchJob(jobId, {
     status: 'running',
@@ -101,6 +111,7 @@ async function runJob(jobId: string, url: string, request: Sampling = {}): Promi
     {
       ...launch,
       vantageRegion: region,
+      ...(crawlBudgetMs ? { maxDurationMs: crawlBudgetMs } : {}),
       navigationTimeoutMs: 60_000,
       onProgress: (p) => {
         if (p.phase === 'crawling' && p.done % 2 === 0) {
@@ -176,7 +187,7 @@ async function runJob(jobId: string, url: string, request: Sampling = {}): Promi
   });
 }
 
-export async function handler(event: SqsEvent): Promise<SqsBatchResponse> {
+export async function handler(event: SqsEvent, context?: LambdaContext): Promise<SqsBatchResponse> {
   const failures: { itemIdentifier: string }[] = [];
 
   for (const record of event.Records) {
@@ -185,11 +196,14 @@ export async function handler(event: SqsEvent): Promise<SqsBatchResponse> {
       const msg = JSON.parse(record.body) as Partial<ScanRequest>;
       if (!msg.jobId || !msg.url) throw new Error('message missing jobId or url');
       jobId = msg.jobId;
+      const remaining = context?.getRemainingTimeInMillis?.();
+      const crawlBudgetMs = remaining ? Math.max(30_000, remaining - RENDER_RESERVE_MS) : undefined;
+
       await runJob(msg.jobId, msg.url, {
         ...(msg.siteId ? { siteId: msg.siteId } : {}),
         ...(msg.mode ? { mode: msg.mode } : {}),
         ...(msg.maxPages ? { maxPages: msg.maxPages } : {}),
-      });
+      }, crawlBudgetMs);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error('worker failed', { jobId, message });

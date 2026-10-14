@@ -1,0 +1,388 @@
+collection: Australian states, territories and local government
+description: >
+  State, territory and major local government services. Chosen for prominence first and
+  probed for reachability second, so the proportion marked excluded is an honest measure
+  of how much of government this tool can see rather than an artefact of picking sites
+  that let us in. Reachability probed from the deployed scanner in us-east-1 via
+  GET /api/reachable on 2026-10-14. Note that reachability is a property of a network
+  location, not of a site: some of these answer an Australian client and refuse this one.
+
+targets:
+  - site_id: nsw
+    agency: NSW Government
+    service: nsw.gov.au
+    jurisdiction: New South Wales
+    entry_url: https://www.nsw.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: nsw-service
+    agency: Service NSW
+    service: service.nsw.gov.au
+    jurisdiction: New South Wales
+    entry_url: https://www.service.nsw.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: nsw-transport
+    agency: Transport for NSW
+    service: transport.nsw.gov.au
+    jurisdiction: New South Wales
+    entry_url: https://www.transport.nsw.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: nsw-health
+    agency: NSW Health
+    service: health.nsw.gov.au
+    jurisdiction: New South Wales
+    entry_url: https://www.health.nsw.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: nsw-education
+    agency: NSW Department of Education
+    service: education.nsw.gov.au
+    jurisdiction: New South Wales
+    entry_url: https://education.nsw.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: nsw-planning
+    agency: NSW Department of Planning
+    service: planning.nsw.gov.au
+    jurisdiction: New South Wales
+    entry_url: https://www.planning.nsw.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: nsw-revenue
+    agency: Revenue NSW
+    service: revenue.nsw.gov.au
+    jurisdiction: New South Wales
+    entry_url: https://www.revenue.nsw.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: nsw-fairtrading
+    agency: NSW Fair Trading
+    service: fairtrading.nsw.gov.au
+    jurisdiction: New South Wales
+    entry_url: https://www.fairtrading.nsw.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: vic
+    agency: Victorian Government
+    service: vic.gov.au
+    jurisdiction: Victoria
+    entry_url: https://www.vic.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: vic-service
+    agency: Service Victoria
+    service: service.vic.gov.au
+    jurisdiction: Victoria
+    entry_url: https://service.vic.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: vic-health
+    agency: Victorian Department of Health
+    service: health.vic.gov.au
+    jurisdiction: Victoria
+    entry_url: https://www.health.vic.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: vic-sro
+    agency: State Revenue Office Victoria
+    service: sro.vic.gov.au
+    jurisdiction: Victoria
+    entry_url: https://www.sro.vic.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: vic-education
+    agency: Victorian Department of Education
+    service: education.vic.gov.au
+    jurisdiction: Victoria
+    entry_url: https://www.education.vic.gov.au/
+    status: excluded
+    checked_at: 2026-10-14
+    reason: Returns HTTP 500 to the scanner.
+
+  - site_id: vic-transport
+    agency: Victorian Department of Transport
+    service: transport.vic.gov.au
+    jurisdiction: Victoria
+    entry_url: https://transport.vic.gov.au/
+    status: excluded
+    checked_at: 2026-10-14
+    reason: Returns HTTP 403 to the scanner.
+
+  - site_id: vic-vicroads
+    agency: VicRoads
+    service: vicroads.vic.gov.au
+    jurisdiction: Victoria
+    entry_url: https://www.vicroads.vic.gov.au/
+    status: excluded
+    checked_at: 2026-10-14
+    reason: Returns HTTP 403 to the scanner.
+
+  - site_id: qld
+    agency: Queensland Government
+    service: qld.gov.au
+    jurisdiction: Queensland
+    entry_url: https://www.qld.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: qld-education
+    agency: Queensland Department of Education
+    service: education.qld.gov.au
+    jurisdiction: Queensland
+    entry_url: https://education.qld.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: qld-business
+    agency: Business Queensland
+    service: business.qld.gov.au
+    jurisdiction: Queensland
+    entry_url: https://www.business.qld.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: qld-publications
+    agency: Queensland Publications
+    service: publications.qld.gov.au
+    jurisdiction: Queensland
+    entry_url: https://www.publications.qld.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: qld-health
+    agency: Queensland Health
+    service: health.qld.gov.au
+    jurisdiction: Queensland
+    entry_url: https://www.health.qld.gov.au/
+    status: excluded
+    checked_at: 2026-10-14
+    reason: Returns HTTP 403 to the scanner.
+
+  - site_id: qld-tmr
+    agency: Queensland Transport and Main Roads
+    service: tmr.qld.gov.au
+    jurisdiction: Queensland
+    entry_url: https://www.tmr.qld.gov.au/
+    status: excluded
+    checked_at: 2026-10-14
+    reason: Returns HTTP 403 to the scanner.
+
+  - site_id: wa
+    agency: Western Australian Government
+    service: wa.gov.au
+    jurisdiction: Western Australia
+    entry_url: https://www.wa.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: wa-health
+    agency: WA Department of Health
+    service: health.wa.gov.au
+    jurisdiction: Western Australia
+    entry_url: https://www.health.wa.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: wa-transport
+    agency: WA Department of Transport
+    service: transport.wa.gov.au
+    jurisdiction: Western Australia
+    entry_url: https://www.transport.wa.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: wa-dmirs
+    agency: WA Mines, Industry Regulation and Safety
+    service: dmirs.wa.gov.au
+    jurisdiction: Western Australia
+    entry_url: https://www.dmirs.wa.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: wa-water
+    agency: WA Department of Water
+    service: water.wa.gov.au
+    jurisdiction: Western Australia
+    entry_url: https://www.water.wa.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: sa
+    agency: South Australian Government
+    service: sa.gov.au
+    jurisdiction: South Australia
+    entry_url: https://www.sa.gov.au/
+    status: excluded
+    checked_at: 2026-10-14
+    reason: Returns HTTP 403 to the scanner.
+
+  - site_id: sa-health
+    agency: SA Health
+    service: health.sa.gov.au
+    jurisdiction: South Australia
+    entry_url: https://www.health.sa.gov.au/
+    status: excluded
+    checked_at: 2026-10-14
+    reason: Connection could not be established.
+
+  - site_id: sa-education
+    agency: SA Department for Education
+    service: education.sa.gov.au
+    jurisdiction: South Australia
+    entry_url: https://www.education.sa.gov.au/
+    status: excluded
+    checked_at: 2026-10-14
+    reason: Returns HTTP 403 to the scanner.
+
+  - site_id: sa-revenue
+    agency: RevenueSA
+    service: revenuesa.sa.gov.au
+    jurisdiction: South Australia
+    entry_url: https://www.revenuesa.sa.gov.au/
+    status: excluded
+    checked_at: 2026-10-14
+    reason: Returns HTTP 403 to the scanner.
+
+  - site_id: tas
+    agency: Tasmanian Government
+    service: tas.gov.au
+    jurisdiction: Tasmania
+    entry_url: https://www.tas.gov.au/
+    status: excluded
+    checked_at: 2026-10-14
+    reason: Returns HTTP 403 to the scanner.
+
+  - site_id: tas-education
+    agency: Tasmanian Department for Education
+    service: education.tas.gov.au
+    jurisdiction: Tasmania
+    entry_url: https://www.education.tas.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: tas-health
+    agency: Tasmanian Department of Health
+    service: health.tas.gov.au
+    jurisdiction: Tasmania
+    entry_url: https://www.health.tas.gov.au/
+    status: excluded
+    checked_at: 2026-10-14
+    reason: Returns HTTP 403 to the scanner.
+
+  - site_id: tas-transport
+    agency: Tasmanian Department of State Growth
+    service: transport.tas.gov.au
+    jurisdiction: Tasmania
+    entry_url: https://www.transport.tas.gov.au/
+    status: excluded
+    checked_at: 2026-10-14
+    reason: Returns HTTP 403 to the scanner.
+
+  - site_id: act
+    agency: ACT Government
+    service: act.gov.au
+    jurisdiction: Australian Capital Territory
+    entry_url: https://www.act.gov.au/
+    status: excluded
+    checked_at: 2026-10-14
+    reason: Returns HTTP 403 to the scanner.
+
+  - site_id: act-health
+    agency: ACT Health
+    service: health.act.gov.au
+    jurisdiction: Australian Capital Territory
+    entry_url: https://www.health.act.gov.au/
+    status: excluded
+    checked_at: 2026-10-14
+    reason: Returns HTTP 403 to the scanner.
+
+  - site_id: act-education
+    agency: ACT Education Directorate
+    service: education.act.gov.au
+    jurisdiction: Australian Capital Territory
+    entry_url: https://www.education.act.gov.au/
+    status: excluded
+    checked_at: 2026-10-14
+    reason: Returns HTTP 403 to the scanner.
+
+  - site_id: act-revenue
+    agency: ACT Revenue Office
+    service: revenue.act.gov.au
+    jurisdiction: Australian Capital Territory
+    entry_url: https://www.revenue.act.gov.au/
+    status: excluded
+    checked_at: 2026-10-14
+    reason: Returns HTTP 403 to the scanner.
+
+  - site_id: nt
+    agency: Northern Territory Government
+    service: nt.gov.au
+    jurisdiction: Northern Territory
+    entry_url: https://nt.gov.au/
+    status: excluded
+    checked_at: 2026-10-14
+    reason: Returns HTTP 403 to the scanner.
+
+  - site_id: nt-health
+    agency: NT Department of Health
+    service: health.nt.gov.au
+    jurisdiction: Northern Territory
+    entry_url: https://health.nt.gov.au/
+    status: excluded
+    checked_at: 2026-10-14
+    reason: Returns HTTP 403 to the scanner.
+
+  - site_id: nt-education
+    agency: NT Department of Education
+    service: education.nt.gov.au
+    jurisdiction: Northern Territory
+    entry_url: https://education.nt.gov.au/
+    status: excluded
+    checked_at: 2026-10-14
+    reason: Returns HTTP 403 to the scanner.
+
+  - site_id: city-melbourne
+    agency: City of Melbourne
+    service: melbourne.vic.gov.au
+    jurisdiction: Local government
+    entry_url: https://www.melbourne.vic.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: city-sydney
+    agency: City of Sydney
+    service: cityofsydney.nsw.gov.au
+    jurisdiction: Local government
+    entry_url: https://www.cityofsydney.nsw.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: city-brisbane
+    agency: Brisbane City Council
+    service: brisbane.qld.gov.au
+    jurisdiction: Local government
+    entry_url: https://www.brisbane.qld.gov.au/
+    status: active
+    checked_at: 2026-10-14
+
+  - site_id: city-perth
+    agency: City of Perth
+    service: cityofperth.wa.gov.au
+    jurisdiction: Local government
+    entry_url: https://www.cityofperth.wa.gov.au/
+    status: active
+    checked_at: 2026-10-14
