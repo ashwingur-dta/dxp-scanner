@@ -35,6 +35,70 @@ function esc(s: unknown): string {
 
 const pct = (n: number | null): string => (n === null ? '—' : `${Math.round(n * 100)}%`);
 
+const INTEGRITY_REASON: Record<string, string> = {
+  http_error: 'HTTP error',
+  challenge_page: 'bot-protection interstitial',
+  content_too_short: 'too little content to assess',
+  navigation_timeout: 'navigation timed out',
+  wrong_content_type: 'not an HTML page',
+  redirected_offsite: 'redirected off the service',
+};
+
+function shortPath(url: string): string {
+  try {
+    const u = new URL(url);
+    return u.pathname === '/' ? '/' : `${u.pathname}${u.search}`;
+  } catch {
+    return url;
+  }
+}
+
+function renderEvidence(bundle: EvidenceBundle): string {
+  const assessed = bundle.pages.filter((p) => p.integrity.ok);
+  const excluded = bundle.pages.filter((p) => !p.integrity.ok);
+  const notRetrieved = bundle.skipped;
+
+  const row = (label: string, detail: string, cls = '') =>
+    `<tr><td class="u ${cls}">${esc(label)}</td><td class="d">${esc(detail)}</td></tr>`;
+
+  return `
+<section class="evidence">
+  <header class="std-head">
+    <h2>Pages assessed</h2>
+    <div class="std-score"><strong>${assessed.length}</strong><span class="denom">of ${
+      assessed.length + excluded.length + notRetrieved.length
+    } attempted</span></div>
+  </header>
+  <p class="note">Every score on this page derives only from the pages listed as assessed.</p>
+  <table class="pages">
+    <caption>Pages the scanner retrieved, and what happened to each</caption>
+    <thead><tr><th scope="col">Page</th><th scope="col">Outcome</th></tr></thead>
+    <tbody>
+      ${assessed
+        .map((p) => row(shortPath(p.final_url), `assessed · ${p.main_word_count} words`, 'ok'))
+        .join('')}
+      ${excluded
+        .map((p) =>
+          row(
+            shortPath(p.final_url),
+            `excluded · ${p.integrity.reasons.map((r) => INTEGRITY_REASON[r] ?? r).join(', ')}`,
+            'ex',
+          ),
+        )
+        .join('')}
+      ${notRetrieved
+        .map((sk) => row(shortPath(sk.url), `not retrieved · ${sk.reason.split('\n')[0] ?? ''}`, 'ex'))
+        .join('')}
+    </tbody>
+  </table>
+  ${
+    excluded.length
+      ? `<p class="note">Excluded pages are never counted as failures against the service.</p>`
+      : ''
+  }
+</section>`;
+}
+
 function renderFinding(f: CriterionScore['findings'][number]): string {
   const urls = f.failing_urls ?? [];
   const shown = urls.slice(0, 6);
@@ -126,7 +190,7 @@ function renderStandard(s: StandardScore): string {
 const STYLES = `
 :root{
   --bg:#0c1016; --panel:#141a22; --panel2:#1b222c; --line:#2a333f;
-  --ink:#e7edf4; --mute:#93a1b1; --dim:#6b7a8c;
+  --ink:#e7edf4; --mute:#93a1b1; --dim:#8695a6;
   --accent:#6fb3f2;
   --met:#56d178; --met-bg:#12301d;
   --unmet:#ff7b72; --unmet-bg:#3a1714;
@@ -226,6 +290,18 @@ ul.urls{margin:.35rem 0;padding-left:1.1rem;font-family:ui-monospace,SFMono-Regu
 footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);
   color:var(--dim);font-size:.78rem}
 
+.evidence{margin-top:2.25rem}
+table.pages{width:100%;border-collapse:collapse;font-size:.82rem;margin-top:.5rem}
+table.pages caption{text-align:left;color:var(--dim);font-size:.78rem;padding-bottom:.45rem}
+table.pages th{text-align:left;font-size:.66rem;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--dim);font-weight:600;padding:.35rem .6rem;border-bottom:1px solid var(--dim)}
+table.pages td{padding:.35rem .6rem;border-bottom:1px solid var(--line);vertical-align:top}
+table.pages td.u{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all;
+  max-width:28rem}
+table.pages td.u.ok{color:var(--ink)}
+table.pages td.u.ex{color:var(--dim)}
+table.pages td.d{color:var(--mute);white-space:nowrap}
+
 @media print{
   @page{margin:14mm}
   html{color-scheme:light}
@@ -307,6 +383,8 @@ thresholds used here were set by this tool, not the policy.</p>
 </dl>
 
 ${notes.map((n) => `<p class="callout">${n}</p>`).join('')}
+
+${renderEvidence(bundle)}
 
 ${scorecard.standards.map(renderStandard).join('')}
 

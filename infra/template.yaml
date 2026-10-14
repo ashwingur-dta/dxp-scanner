@@ -42,6 +42,45 @@ Parameters:
     Default: 2000
     Description: Requests per IP per 5 minutes at the CloudFront edge
 
+
+  DispatchCodeKey:
+    Type: String
+    Description: S3 key of the batch-dispatch Lambda zip
+
+  AggregateCodeKey:
+    Type: String
+    Description: S3 key of the aggregate Lambda zip
+
+  LeaderboardPageBudget:
+    Type: Number
+    Default: 60
+    Description: >
+      Pages per full assessment for the leaderboard. Entries collected under any other
+      budget are dropped as non-comparable, because coverage checks such as feedback
+      presence on every page mean different things at different sample sizes. 60 pages at
+      one request per second fits inside the worker's 900 second timeout with room for
+      axe-core and PDF rendering.
+
+  LeaderboardMinPages:
+    Type: Number
+    Default: 25
+    Description: >
+      Minimum pages that must survive collection integrity for a site to be ranked. A site
+      that only yielded a handful of readable pages is reported as unranked with a reason
+      rather than compared against sites where the full sample was read.
+
+  DispatchSchedule:
+    Type: String
+    Default: cron(0 16 ? * SUN *)
+    Description: When to enqueue a batch run, in UTC
+
+  AggregateSchedule:
+    Type: String
+    Default: cron(0 22 ? * SUN *)
+    Description: >
+      When to rebuild leaderboard.json, in UTC. Must be late enough after DispatchSchedule
+      for the queue to drain.
+
 Resources:
 
   SiteBucket:
@@ -453,6 +492,141 @@ Resources:
               StringEquals:
                 AWS:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}'
 
+
+  DispatchRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: batch-dispatch
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: dynamodb:PutItem
+                Resource: !GetAtt JobsTable.Arn
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt ScanQueue.Arn
+
+  AggregateRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: aggregate
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt EvidenceBucket.Arn
+                Condition:
+                  StringLike:
+                    s3:prefix: 'scorecards/*'
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub '${EvidenceBucket.Arn}/scorecards/*'
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub '${ReportBucket.Arn}/reports/leaderboard.json'
+
+  DispatchFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'dxp-batch-dispatch-${AWS::StackName}'
+      Runtime: nodejs22.x
+      Handler: index.handler
+      Role: !GetAtt DispatchRole.Arn
+      MemorySize: 256
+      Timeout: 120
+      Architectures: [x86_64]
+      Code:
+        S3Bucket: !Ref ApiCodeBucket
+        S3Key: !Ref DispatchCodeKey
+      Environment:
+        Variables:
+          JOBS_TABLE: !Ref JobsTable
+          QUEUE_URL: !Ref ScanQueue
+          LEADERBOARD_PAGE_BUDGET: !Ref LeaderboardPageBudget
+          NODE_OPTIONS: --enable-source-maps
+
+  AggregateFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'dxp-aggregate-${AWS::StackName}'
+      Runtime: nodejs22.x
+      Handler: index.handler
+      Role: !GetAtt AggregateRole.Arn
+      MemorySize: 512
+      Timeout: 300
+      Architectures: [x86_64]
+      Code:
+        S3Bucket: !Ref ApiCodeBucket
+        S3Key: !Ref AggregateCodeKey
+      Environment:
+        Variables:
+          EVIDENCE_BUCKET: !Ref EvidenceBucket
+          REPORT_BUCKET: !Ref ReportBucket
+          LEADERBOARD_KEY: reports/leaderboard.json
+          LEADERBOARD_PAGE_BUDGET: !Ref LeaderboardPageBudget
+          LEADERBOARD_MIN_PAGES: !Ref LeaderboardMinPages
+          NODE_OPTIONS: --enable-source-maps
+
+  DispatchScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub 'dxp-batch-dispatch-${AWS::StackName}'
+      Description: Enqueue a full assessment for every active target in the registry
+      ScheduleExpression: !Ref DispatchSchedule
+      State: ENABLED
+      Targets:
+        - Id: dispatch
+          Arn: !GetAtt DispatchFunction.Arn
+
+  AggregateScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub 'dxp-aggregate-${AWS::StackName}'
+      Description: Rebuild leaderboard.json from the per-site scorecards in the evidence bucket
+      ScheduleExpression: !Ref AggregateSchedule
+      State: ENABLED
+      Targets:
+        - Id: aggregate
+          Arn: !GetAtt AggregateFunction.Arn
+
+  DispatchInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt DispatchFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt DispatchScheduleRule.Arn
+
+  AggregateInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt AggregateFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt AggregateScheduleRule.Arn
+
 Outputs:
   SiteUrl:
     Description: The public URL
@@ -470,3 +644,19 @@ Outputs:
     Value: !Ref EvidenceBucket
   DistributionId:
     Value: !Ref Distribution
+
+  LeaderboardUrl:
+    Description: The ranked leaderboard page
+    Value: !Sub 'https://${Distribution.DomainName}/#/leaderboard'
+
+  LeaderboardDataUrl:
+    Description: The static JSON the leaderboard page fetches
+    Value: !Sub 'https://${Distribution.DomainName}/reports/leaderboard.json'
+
+  DispatchFunctionName:
+    Description: Invoke manually to start a batch run without waiting for the schedule
+    Value: !Ref DispatchFunction
+
+  AggregateFunctionName:
+    Description: Invoke manually to rebuild the leaderboard immediately
+    Value: !Ref AggregateFunction

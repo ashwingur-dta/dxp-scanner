@@ -5,7 +5,7 @@
   --line: #2a333f;
   --ink: #e7edf4;
   --mute: #93a1b1;
-  --dim: #6b7a8c;
+  --dim: #8695a6;
   --accent: #6fb3f2;
   --accent-ink: #07121d;
   --met: #56d178;
@@ -383,6 +383,16 @@ input:disabled {
   flex-wrap: wrap;
 }
 
+.table-scroll {
+  overflow-x: auto;
+  margin-top: 0.5rem;
+}
+
+.table-scroll:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -419,16 +429,29 @@ tbody tr:hover {
   background: var(--panel);
 }
 
-td.rank,
 td.score,
-th.rank,
-th.score {
+td.num,
+tbody th[scope='row'] {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 td.score {
   font-weight: 700;
+  font-size: 1rem;
+}
+
+td.score .denom,
+td.num .denom {
+  font-weight: 400;
+  display: block;
+}
+
+.equal {
+  display: block;
+  font-weight: 400;
+  font-size: 0.74rem;
+  color: var(--dim);
 }
 
 td .denom,

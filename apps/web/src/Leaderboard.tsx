@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { SiteFooter, SiteHeader } from './App';
 import { getLeaderboard, type Leaderboard as Board } from './api';
 
 const COVERAGE_DOC =
@@ -6,6 +7,7 @@ const COVERAGE_DOC =
 
 function Ranked({ board }: { board: Board }) {
   return (
+    <div className="table-scroll" tabIndex={0} role="region" aria-label="Ranked assessments">
     <table className="leaderboard">
       <caption>
         Ranked assessments. {board.counts.ranked} of {board.counts.registry_total} targets in the
@@ -18,8 +20,8 @@ function Ranked({ board }: { board: Board }) {
           <th scope="col">Agency</th>
           <th scope="col">Score</th>
           <th scope="col">Pages read</th>
-          <th scope="col">Needs human review</th>
-          <th scope="col">Not assessable externally</th>
+          <th scope="col">Review</th>
+          <th scope="col">Not assessable</th>
           <th scope="col">Report</th>
         </tr>
       </thead>
@@ -32,14 +34,14 @@ function Ranked({ board }: { board: Board }) {
             </th>
             <td>{e.service}</td>
             <td>{e.agency}</td>
-            <td>
-              {e.score_percent}% of {e.assessed} assessable sub-requirements
+            <td className="score">
+              {e.score_percent}%<span className="denom"> of {e.assessed} assessable</span>
             </td>
-            <td>
-              {e.pages_assessed} of {e.pages_attempted}
+            <td className="num">
+              {e.pages_assessed}<span className="denom"> of {e.pages_attempted}</span>
             </td>
-            <td>{e.needs_review}</td>
-            <td>{e.not_assessable}</td>
+            <td className="num">{e.needs_review}</td>
+            <td className="num">{e.not_assessable}</td>
             <td>
               {e.report_url ? (
                 <a href={e.report_url} aria-label={`Report for ${e.service}`}>
@@ -53,6 +55,7 @@ function Ranked({ board }: { board: Board }) {
         ))}
       </tbody>
     </table>
+    </div>
   );
 }
 
@@ -105,30 +108,22 @@ export default function Leaderboard() {
         Skip to main content
       </a>
 
-      <header className="site-header">
-        <div className="wrap">
-          <p className="eyebrow">Independent · experimental</p>
-          <h1>Ranked leaderboard</h1>
-          <p className="tagline">
-            <a href="/">Assess a single site</a>
-          </p>
-        </div>
-      </header>
+      <SiteHeader current="leaderboard" />
 
       <main id="main" className="wrap">
-        <div className="disclaimer">
-          <p>
-            <strong>This is not an official assessment.</strong> Not affiliated with or endorsed by
-            the Digital Transformation Agency, and not a determination of compliance.
-          </p>
-          {board && (
-            <p>
-              {board.threshold_provenance.tool} of the{' '}
-              {board.threshold_provenance.policy + board.threshold_provenance.tool} thresholds
-              behind these scores were set by this tool, not the policy.
-            </p>
-          )}
+        <div className="hero">
+          <h1>Ranked leaderboard</h1>
+          <p>Only comparable full assessments are ranked. Everything else is listed with its reason.</p>
         </div>
+
+        <p className="disclaimer">
+          <b>Not an official assessment.</b>
+          {board
+            ? ` ${board.threshold_provenance.tool} of ${
+                board.threshold_provenance.policy + board.threshold_provenance.tool
+              } thresholds behind these scores were set by this tool, not the policy.`
+            : ''}
+        </p>
 
         {error && (
           <p className="field-error" role="alert">
@@ -176,20 +171,8 @@ export default function Leaderboard() {
         )}
       </main>
 
-      <footer className="site-footer">
-        <div className="wrap">
-          <p>
-            Registry, source and methodology:{' '}
-            <a href="https://github.com/ashwingur-dta/dxp-scanner">
-              github.com/ashwingur-dta/dxp-scanner
-            </a>
-          </p>
-          <p>
-            Operating a site assessed here and want a correction or an exclusion? Open an issue on
-            the repository.
-          </p>
-        </div>
-      </footer>
+      <SiteFooter />
+
     </>
   );
 }

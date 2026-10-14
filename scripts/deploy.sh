@@ -27,10 +27,14 @@ node scripts/build.mjs
 STAMP="$(date +%Y%m%d%H%M%S)"
 API_KEY="lambda/api-${STAMP}.zip"
 WORKER_KEY="lambda/worker-${STAMP}.zip"
+DISPATCH_KEY="lambda/dispatch-${STAMP}.zip"
+AGGREGATE_KEY="lambda/aggregate-${STAMP}.zip"
 
 echo "==> uploading bundles"
 aws s3 cp dist/api.zip "s3://${DEPLOY_BUCKET}/${API_KEY}" --only-show-errors
 aws s3 cp dist/worker.zip "s3://${DEPLOY_BUCKET}/${WORKER_KEY}" --only-show-errors
+aws s3 cp dist/dispatch.zip "s3://${DEPLOY_BUCKET}/${DISPATCH_KEY}" --only-show-errors
+aws s3 cp dist/aggregate.zip "s3://${DEPLOY_BUCKET}/${AGGREGATE_KEY}" --only-show-errors
 
 echo "==> deploying stack (this creates a CloudFront distribution the first time, ~5 min)"
 aws cloudformation deploy \
@@ -47,7 +51,9 @@ aws cloudformation deploy \
     "RateLimit=${RATE_LIMIT:-0}" \
     "RateWindowSeconds=${RATE_WINDOW_SECONDS:-600}" \
     "DedupeSeconds=${DEDUPE_SECONDS:-60}" \
-    "WafRateLimit=${WAF_RATE_LIMIT:-2000}"
+    "WafRateLimit=${WAF_RATE_LIMIT:-2000}" \
+    "DispatchCodeKey=${DISPATCH_KEY}" \
+    "AggregateCodeKey=${AGGREGATE_KEY}"
 
 get_output() {
   aws cloudformation describe-stacks --stack-name "$STACK" --region "$REGION" \

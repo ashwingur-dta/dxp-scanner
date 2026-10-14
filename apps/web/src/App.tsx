@@ -1,59 +1,102 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { RequestFailed, getScan, looksLikeGovAu, startScan, type Job } from './api';
 import Leaderboard from './Leaderboard';
+import { RequestFailed, getScan, looksLikeGovAu, startScan, type Job } from './api';
 
 export const LEADERBOARD_PATH = '/leaderboard';
 
 const PHASE_LABEL: Record<string, string> = {
-  queued: 'Waiting for a scanner',
+  queued: 'Queued',
   validating: 'Checking the address',
-  discovering: 'Finding pages to assess',
+  discovering: 'Finding pages',
   crawling: 'Reading pages',
-  'site-checks': 'Checking the site as a whole',
-  scoring: 'Scoring against the criteria',
-  'rendering-pdf': 'Preparing the PDF',
-  sealing: 'Finishing up',
+  'site-checks': 'Checking the site',
+  scoring: 'Scoring',
+  'rendering-pdf': 'Building the PDF',
+  sealing: 'Finishing',
   ready: 'Done',
-  failed: 'Failed',
 };
+
+export function SiteHeader({ current }: { current: 'scan' | 'leaderboard' }) {
+  return (
+    <header className="site-header">
+      <div className="wrap">
+        <a className="brand" href="/">
+          DX Policy scanner <span>· unofficial</span>
+        </a>
+        <nav className="top" aria-label="Sections">
+          <a href="/" {...(current === 'scan' ? { 'aria-current': 'page' as const } : {})}>
+            Scan a site
+          </a>
+          <a
+            href={LEADERBOARD_PATH}
+            {...(current === 'leaderboard' ? { 'aria-current': 'page' as const } : {})}
+          >
+            Leaderboard
+          </a>
+        </nav>
+      </div>
+    </header>
+  );
+}
+
+export function SiteFooter() {
+  return (
+    <footer className="site-footer">
+      <div className="wrap">
+        <p>
+          Independent and experimental. Not affiliated with or endorsed by the DTA, and not a
+          compliance determination.
+        </p>
+        <p>
+          <a href="https://github.com/ashwingur-dta/dxp-scanner">Source and methodology</a>
+          {' · '}
+          <a href="https://github.com/ashwingur-dta/dxp-scanner/blob/main/docs/coverage.md">
+            Which sites can be scanned
+          </a>
+        </p>
+      </div>
+    </footer>
+  );
+}
 
 function Progress({ job }: { job: Job }) {
   const phase = job.phase ?? job.status;
   const label = PHASE_LABEL[phase] ?? phase;
-  const showCount = phase === 'crawling' && job.pages_total > 0;
-  const value = showCount ? job.pages_done : null;
+  const counting = phase === 'crawling' && job.pages_total > 0;
 
   return (
     <div className="panel" role="status" aria-live="polite">
       <p className="phase">
         <span className="spinner" aria-hidden="true" />
         {label}
-        {showCount ? ` — ${job.pages_done} of ${job.pages_total}` : ''}
+        {counting ? ' ' + job.pages_done + '/' + job.pages_total : ''}
       </p>
       <div
         className="bar"
         role="progressbar"
         aria-label="Scan progress"
-        {...(value !== null
-          ? { 'aria-valuenow': value, 'aria-valuemin': 0, 'aria-valuemax': job.pages_total }
+        {...(counting
+          ? {
+              'aria-valuenow': job.pages_done,
+              'aria-valuemin': 0,
+              'aria-valuemax': job.pages_total,
+            }
           : {})}
       >
         <div
-          className={`bar-fill${value === null ? ' indeterminate' : ''}`}
-          style={value !== null ? { width: `${(value / job.pages_total) * 100}%` } : undefined}
+          className={counting ? 'bar-fill' : 'bar-fill indeterminate'}
+          style={
+            counting ? { width: ((job.pages_done / job.pages_total) * 100).toFixed(0) + '%' } : undefined
+          }
         />
       </div>
-      <p className="hint">
-        A scan reads about {job.pages_total} pages at one request per second, so this usually takes
-        one to three minutes. Being deliberately slow is how the scanner avoids putting load on a
-        live government service.
-      </p>
+      <p className="hint">Usually 15 to 25 seconds. One request per second, to stay polite.</p>
     </div>
   );
 }
 
 function Result({ job }: { job: Job }) {
-  const pct = job.score === null ? null : Math.round(job.score * 100);
+  const score = job.score === null ? null : Math.round(job.score * 100);
 
   return (
     <div className="panel result">
@@ -62,38 +105,35 @@ function Result({ job }: { job: Job }) {
 
       <dl className="stats">
         <div>
-          <dt>Externally assessable score</dt>
+          <dt>Score</dt>
           <dd>
-            {pct === null ? 'n/a' : `${pct}%`}
-            <small>of {job.assessed ?? 0} sub-requirements that could be judged</small>
+            {score === null ? '—' : score + '%'}
+            <small>of {job.assessed ?? 0} assessable</small>
           </dd>
         </div>
         <div>
-          <dt>Needs human review</dt>
-          <dd>
-            {job.needs_review ?? 0}
-            <small>a machine cannot decide these</small>
-          </dd>
+          <dt>Pages read</dt>
+          <dd>{job.pages_done}</dd>
         </div>
         <div>
-          <dt>Not assessable externally</dt>
+          <dt>Needs review</dt>
+          <dd>{job.needs_review ?? 0}</dd>
+        </div>
+        <div>
+          <dt>Not assessable</dt>
           <dd>
             {job.not_assessable ?? 0}
-            <small>require evidence held by the agency</small>
+            <small>needs agency evidence</small>
           </dd>
         </div>
       </dl>
 
-      <p className="caveat">
-        This is a quick scan of a small sample of pages. It is indicative only and is not
-        comparable with the ranked leaderboard, which uses a deeper and identically sampled
-        assessment.
-      </p>
+      <p className="caveat">Quick scan — indicative, and not comparable with the leaderboard.</p>
 
       <div className="actions">
         {job.report_url && (
           <a className="btn primary" href={job.report_url}>
-            View the full report
+            View report
           </a>
         )}
         {job.pdf_url && (
@@ -109,8 +149,8 @@ function Result({ job }: { job: Job }) {
 function Failure({ job }: { job: Job }) {
   return (
     <div className="panel error" role="alert">
-      <h2>{job.status === 'rejected' ? 'That address was rejected' : 'The scan did not finish'}</h2>
-      <p>{job.error ?? 'No further detail is available.'}</p>
+      <h2>{job.status === 'rejected' ? 'Address rejected' : 'Could not assess this site'}</h2>
+      <p>{job.error ?? 'No further detail available.'}</p>
     </div>
   );
 }
@@ -129,7 +169,6 @@ function Home() {
   const [unreachable, setUnreachable] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const pollRef = useRef<number | null>(null);
-  const liveRegion = useRef<HTMLDivElement | null>(null);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current !== null) {
@@ -149,7 +188,7 @@ function Home() {
         } catch (err) {
           setError(err instanceof Error ? err.message : 'Lost contact with the scanner.');
         }
-      }, 2500);
+      }, 1800);
     },
     [stopPolling],
   );
@@ -164,13 +203,11 @@ function Home() {
 
     const trimmed = url.trim();
     if (!trimmed) {
-      setError('Enter the address of an Australian government website.');
+      setError('Enter a gov.au address.');
       return;
     }
     if (!looksLikeGovAu(trimmed)) {
-      setError(
-        'Only Australian government sites under gov.au can be assessed. Restricting this is also what stops the tool being used to send traffic anywhere else.',
-      );
+      setError('Only gov.au addresses can be assessed.');
       return;
     }
 
@@ -184,7 +221,7 @@ function Home() {
         setError(err.message);
         setUnreachable(err.code === 'unreachable');
       } else {
-        setError('Could not reach the scanner. Please try again.');
+        setError('Could not reach the scanner. Try again.');
       }
     } finally {
       setSubmitting(false);
@@ -199,40 +236,19 @@ function Home() {
         Skip to main content
       </a>
 
-      <header className="site-header">
-        <div className="wrap">
-          <p className="eyebrow">Independent · experimental</p>
-          <h1>Digital Experience Policy scanner</h1>
-          <p className="tagline">
-            Assess an Australian government website against the{' '}
-            <a href="https://www.digital.gov.au/policy/digital-experience">
-              Digital Experience Policy
-            </a>{' '}
-            — 4 standards, 25 criteria.
-          </p>
-          <p className="tagline">
-            <a href={LEADERBOARD_PATH}>Ranked leaderboard</a>
-          </p>
-        </div>
-      </header>
+      <SiteHeader current="scan" />
 
       <main id="main" className="wrap">
-        <div className="disclaimer">
+        <div className="hero">
+          <h1>How well does a government site meet the Digital Experience Policy?</h1>
           <p>
-            <strong>This is not an official assessment.</strong> It is not affiliated with or
-            endorsed by the Digital Transformation Agency and does not determine compliance.
-          </p>
-          <p>
-            The policy states almost no numeric thresholds, so most thresholds used here were set
-            by this tool rather than the policy. Every report labels which is which.
+            Paste a gov.au address. The scanner reads a sample of pages and scores them against
+            the policy&rsquo;s 25 criteria.
           </p>
         </div>
 
         <form onSubmit={onSubmit} noValidate>
           <label htmlFor="url">Website address</label>
-          <p id="url-hint" className="hint">
-            Must be a gov.au address, for example <code>www.digital.gov.au</code>
-          </p>
           <div className="field">
             <input
               id="url"
@@ -241,17 +257,22 @@ function Home() {
               inputMode="url"
               autoComplete="url"
               spellCheck={false}
-              placeholder="www.digital.gov.au"
+              placeholder="www.abs.gov.au"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               aria-describedby="url-hint"
-              {...(error ? { 'aria-invalid': true } : {})}
+              {...(error ? { 'aria-invalid': true as const } : {})}
               disabled={busy}
             />
             <button className="btn primary" type="submit" disabled={submitting || busy}>
-              {submitting ? 'Starting…' : 'Assess this site'}
+              {submitting ? 'Starting…' : 'Assess'}
             </button>
           </div>
+          <p id="url-hint" className="hint">
+            Try <code>www.abs.gov.au</code>, <code>business.gov.au</code>, <code>my.gov.au</code>
+            {' or '}
+            <code>www.rba.gov.au</code>.
+          </p>
           {error && (
             <p className="field-error" role="alert">
               {error}
@@ -259,67 +280,48 @@ function Home() {
           )}
           {unreachable && (
             <p className="hint">
-              Around half of major gov.au sites refuse automated clients. Verified to work:{' '}
-              <code>www.abs.gov.au</code>, <code>www.ato.gov.au</code>, <code>my.gov.au</code>,{' '}
-              <code>business.gov.au</code>, <code>www.homeaffairs.gov.au</code>,{' '}
-              <code>data.gov.au</code>.{' '}
+              About half of gov.au sites refuse automated clients, and we don&rsquo;t try to get
+              around that.{' '}
               <a href="https://github.com/ashwingur-dta/dxp-scanner/blob/main/docs/coverage.md">
-                Which sites refuse, and why
+                Which sites work
               </a>
-              .
             </p>
           )}
         </form>
 
-        <div ref={liveRegion}>
-          {busy && job && <Progress job={job} />}
-          {job?.status === 'ready' && <Result job={job} />}
-          {job && (job.status === 'failed' || job.status === 'rejected') && <Failure job={job} />}
-        </div>
+        {busy && job && <Progress job={job} />}
+        {job?.status === 'ready' && <Result job={job} />}
+        {job && (job.status === 'failed' || job.status === 'rejected') && <Failure job={job} />}
+
+        <p className="disclaimer">
+          <b>Not an official assessment.</b> The policy sets almost no numeric thresholds, so most
+          of the ones used here were set by this tool. Each report says which.
+        </p>
 
         <section className="explainer">
-          <h2>What this can and cannot tell you</h2>
+          <h2>What a score does and doesn&rsquo;t mean</h2>
           <div className="cols">
             <div>
-              <h3>Measured well</h3>
+              <h3>Measured</h3>
               <p>
-                The two criteria where the policy supplies the rule rather than us: a feedback
-                channel on <em>every</em> page, and the availability measures the policy names
-                verbatim — error rate, load time and percentage of valid links. Plus
-                machine-detectable accessibility issues, plain language, reflow on small screens,
+                Feedback on every page and the availability measures the policy names outright,
+                plus machine-detectable accessibility issues, plain language, small-screen reflow,
                 and whether interpreting and relay services are signposted.
               </p>
             </div>
             <div>
-              <h3>Deliberately not claimed</h3>
+              <h3>Not claimed</h3>
               <p>
-                Automated testing finds roughly a third of WCAG issues, so a pass means no
-                machine-detectable violations, not conformance. Six of the 25 criteria are internal
-                governance processes and are reported as not assessable rather than scored. The
-                scanner never submits a form, so anything behind a transaction is out of reach.
-                Around half of major gov.au sites sit behind bot management and refuse
-                automated clients altogether; those report as unassessable rather than being
-                scored, and we do not attempt to evade that.
+                Automated testing finds about a third of WCAG issues, so a pass is not conformance.
+                Six of the 25 criteria are internal governance and are never scored. Forms are
+                never submitted.
               </p>
             </div>
           </div>
         </section>
       </main>
 
-      <footer className="site-footer">
-        <div className="wrap">
-          <p>
-            Source and methodology:{' '}
-            <a href="https://github.com/ashwingur-dta/dxp-scanner">
-              github.com/ashwingur-dta/dxp-scanner
-            </a>
-          </p>
-          <p>
-            Operating a site assessed here and want a correction or an exclusion? Open an issue on
-            the repository.
-          </p>
-        </div>
-      </footer>
+      <SiteFooter />
     </>
   );
 }
