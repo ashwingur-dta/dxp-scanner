@@ -1,0 +1,13 @@
+import { chromium } from 'playwright';
+const b = await chromium.launch();
+const c = await b.newContext({ viewport: { width: 1180, height: 1200 } });
+const p = await c.newPage();
+const errs = [];
+p.on('console', (m) => m.type() === 'error' && errs.push(m.text()));
+await p.goto('https://d3gzttk0pa47dz.cloudfront.net/leaderboard', { waitUntil: 'load' });
+await p.waitForSelector('table.leaderboard', { timeout: 30000 });
+await p.waitForTimeout(800);
+const rows = await p.locator('table.leaderboard tbody tr').count();
+console.log('ranked rows rendered:', rows, '| console errors:', errs.length || 'none');
+await p.screenshot({ path: '/tmp/live-lb.png', clip: { x: 0, y: 0, width: 1180, height: 1150 } });
+await c.close(); await b.close();

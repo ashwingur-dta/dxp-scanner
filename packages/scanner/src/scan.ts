@@ -14,7 +14,7 @@ import type {
 import { collectFacts } from './facts.js';
 import { fetchCrux } from './crux.js';
 import { fetchRobots } from './robots.js';
-import { guardUrl, isSafeCrawlTarget, normaliseHost } from './url-guard.js';
+import { UrlRejected, guardUrl, isSafeCrawlTarget, normaliseHost } from './url-guard.js';
 import { COLLECTOR_VERSION, EXTRACTOR_VERSION, SAMPLING_POLICY_VERSION } from './versions.js';
 
 export { COLLECTOR_VERSION, EXTRACTOR_VERSION, SAMPLING_POLICY_VERSION };
@@ -291,7 +291,8 @@ export async function scan(job: ScanJob, opts: ScanOptions = {}): Promise<Eviden
   );
 
   if (!robots.isAllowed(entry.pathname)) {
-    throw new Error(
+    throw new UrlRejected(
+      'robots_disallowed',
       `robots.txt on ${host} disallows crawling ${entry.pathname}. The scanner honours robots.txt, so this page cannot be assessed.`,
     );
   }

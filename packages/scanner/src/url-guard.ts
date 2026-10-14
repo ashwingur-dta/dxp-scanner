@@ -10,7 +10,8 @@ export type GuardFailure =
   | 'ip_literal'
   | 'dns_failure'
   | 'private_address'
-  | 'denylisted_path';
+  | 'denylisted_path'
+  | 'robots_disallowed';
 
 export class UrlRejected extends Error {
   constructor(

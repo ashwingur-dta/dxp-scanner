@@ -10,8 +10,9 @@ function Ranked({ board }: { board: Board }) {
     <div className="table-scroll" tabIndex={0} role="region" aria-label="Ranked assessments">
     <table className="leaderboard">
       <caption>
-        Ranked assessments. {board.counts.ranked} of {board.counts.registry_total} targets in the
-        registry. Built {new Date(board.generated_at).toLocaleDateString('en-AU')}.
+        Ranked assessments, service name links to the full report. {board.counts.ranked} of{' '}
+        {board.counts.registry_total} targets in the registry. Built{' '}
+        {new Date(board.generated_at).toLocaleDateString('en-AU')}.
       </caption>
       <thead>
         <tr>
@@ -22,7 +23,6 @@ function Ranked({ board }: { board: Board }) {
           <th scope="col">Pages read</th>
           <th scope="col">Review</th>
           <th scope="col">Not assessable</th>
-          <th scope="col">Report</th>
         </tr>
       </thead>
       <tbody>
@@ -32,7 +32,15 @@ function Ranked({ board }: { board: Board }) {
               {e.rank}
               {e.band_size > 1 ? <span className="equal"> equal, {e.band_size} sites</span> : null}
             </th>
-            <td>{e.service}</td>
+            <td className="service">
+              {e.report_url ? (
+                <a href={e.report_url} aria-label={`Report for ${e.service}`}>
+                  {e.service}
+                </a>
+              ) : (
+                e.service
+              )}
+            </td>
             <td>{e.agency}</td>
             <td className="score">
               {e.score_percent}%<span className="denom"> of {e.assessed} assessable</span>
@@ -42,15 +50,6 @@ function Ranked({ board }: { board: Board }) {
             </td>
             <td className="num">{e.needs_review}</td>
             <td className="num">{e.not_assessable}</td>
-            <td>
-              {e.report_url ? (
-                <a href={e.report_url} aria-label={`Report for ${e.service}`}>
-                  Report
-                </a>
-              ) : (
-                'none'
-              )}
-            </td>
           </tr>
         ))}
       </tbody>
